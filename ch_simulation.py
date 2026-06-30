@@ -81,7 +81,7 @@ class Config:
     # -- via shorter bouts (episodic) or lower daily frequency (chronic). Modelled
     # as a fractional cut to the patient's ANNUAL attack count, independent of
     # abortive access. Acts on frequency only (NOT per-attack duration or peak).
-    preventive_access_fraction: float = 0.30      # share of patients on a preventive
+    preventive_access_fraction: float = 0.23      # bottom-up HIC/MIC/LIC (see sources)
     preventive_responder_mean: float = 0.42       # P(responds | on preventive); Rusanen 2022
     preventive_responder_reduction_mean: float = 0.55  # freq cut among responders
     preventive_responder_reduction_sd: float = 0.20
