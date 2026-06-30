@@ -166,6 +166,7 @@ class SimulationResult:
     patient_severity: np.ndarray       # latent per-patient mean peak intensity
     n_attacks: np.ndarray
     n_attacks_baseline: np.ndarray     # per-patient attacks BEFORE preventive reduction
+    active_days: np.ndarray            # per-patient days/yr in an active period
     on_preventive: np.ndarray          # per-patient
     prev_reduction: np.ndarray         # per-patient fractional frequency reduction
     patient_idx: np.ndarray            # per-attack
@@ -345,6 +346,11 @@ def simulate(cfg: Config | None = None, **overrides) -> SimulationResult:
                     apd_lo, apd_hi)
     chron = cfg.c_active_fraction * 365.0 * c_apd
 
+    # days/yr a patient is in an active period (bouts for episodic; ~year-round for
+    # chronic). Used to sanity-check attack density (e.g. minutes-in-attack/active-day).
+    active_days = np.where(is_episodic, active_weeks * 7.0,
+                           cfg.c_active_fraction * 365.0)
+
     n_attacks_base = np.where(is_episodic, epis, chron)
     n_attacks_baseline = np.clip(np.round(n_attacks_base), 1,
                                  cfg.max_attacks_per_patient).astype(int)
@@ -395,7 +401,8 @@ def simulate(cfg: Config | None = None, **overrides) -> SimulationResult:
     return SimulationResult(
         cfg=cfg, is_episodic=is_episodic, has_access=has_access, efficacy=efficacy,
         patient_severity=patient_severity, n_attacks=n_attacks,
-        n_attacks_baseline=n_attacks_baseline, on_preventive=on_preventive,
+        n_attacks_baseline=n_attacks_baseline, active_days=active_days,
+        on_preventive=on_preventive,
         prev_reduction=prev_reduction, patient_idx=patient_idx,
         duration=duration, intensity=intensity, aborted=aborted,
         scale_factor=n_glob / n, n_sufferers_global=n_glob,

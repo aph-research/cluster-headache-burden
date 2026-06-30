@@ -78,6 +78,7 @@ Results are scaled to the worldwide CH population via annual prevalence.
 | [`index.html`](index.html) | Browser UI: a slider per lever, live Plotly charts, and a sensitivity tornado over each parameter's literature-plausible range. |
 | [`CH_simulation_sources.md`](CH_simulation_sources.md) | Provenance for **every** default value, tagged `[measured]` / `[pooled]` / `[definitional]` / `[assumption]`, with citations. |
 | [`CH simulation parameters.md`](CH%20simulation%20parameters.md) | Distilled research parameters behind the model (frequency, duration, intensity, treatment). |
+| [`validate.py`](validate.py) | Sanity-check suite: hard invariants, per-patient physical plausibility, and population realism vs the literature, plus a random-patient eyeball sample. |
 
 ---
 
@@ -112,6 +113,34 @@ sweep("abort_prob_mean", [0.5, 0.6, 0.7], metric="global_person_years_in_attack"
 ```
 
 ---
+
+## Validation
+
+[`validate.py`](validate.py) runs a battery of sanity checks and prints a PASS/WARN/FAIL
+report (exit code is nonzero if any hard check fails, so it doubles as a CI test):
+
+```bash
+python3 validate.py            # default cohort
+python3 validate.py 50000      # bigger cohort -> better outlier coverage
+python3 validate.py 1000 7     # cohort size, seed
+```
+
+- **Invariants** — must hold for any parameters: determinism under a fixed seed, array-length
+  consistency, intensity ∈ [1,10], durations within bounds (intrinsic vs aborted floors),
+  preventives only *reduce* attack counts, correct global scaling.
+- **Physical plausibility** — per-patient outlier scan: nobody in attack more than the whole
+  year (a denominator-free impossibility check), nobody >24 h/active-day, attacks/active-day
+  respects the ICHD ≤8 ceiling (with a rounding tolerance), nobody pinned to the safety cap.
+- **Realism** — population aggregates vs the literature (% episodic ≈80%, mean peak ≈7, median
+  duration ≈30–45 min, episodic < chronic frequency, right-skewed distributions, ~3M sufferers).
+  These are WARNs, not failures, since they legitimately shift as you move the levers.
+
+**Known modelling simplifications** the checks make explicit: (1) attack frequency and duration
+are sampled independently, so the extreme joint tail (very frequent *and* very long) can imply an
+implausibly dense day for a handful of patients — negligible for aggregate burden, but reported.
+(2) ~1% of episodic patients sample a sub-1-day "bout" yet are floored to ≥1 attack/year (the
+annual-prevalence convention that every simulated sufferer is active that year); these are excluded
+from per-day density checks.
 
 ## Caveats
 
