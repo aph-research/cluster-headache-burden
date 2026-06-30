@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cluster Headache Simulation</title>
+<title>The Global Burden of Cluster Headache</title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
 <style>
   :root { --bg:#0f1115; --panel:#181b22; --ink:#e6e8ec; --mut:#9aa3b2;
-          --accv:#6d5cff; --acco:#ff6b3d; --line:#2a2f3a; }
+          --accv:#4F2AC4; --acco:#F85604; --line:#2a2f3a; }
   * { box-sizing:border-box; }
   html, body { height:100%; }
   body { margin:0; font:14px/1.5 system-ui,Segoe UI,Roboto,sans-serif;
@@ -26,7 +26,18 @@
   .lever { margin:8px 0; }
   .lever label { display:flex; justify-content:space-between; font-size:12px; }
   .lever label b { color:var(--accv); font-variant-numeric:tabular-nums; }
+  .lever label > span { display:flex; align-items:center; gap:5px; }
   .lever input[type=range] { width:100%; accent-color:var(--accv); }
+  .info { color:var(--mut); cursor:help; font-size:11px; opacity:.7; }
+  .info:hover { opacity:1; color:var(--ink); }
+  main h2.sec-h { font-size:13px; text-transform:uppercase; letter-spacing:.06em;
+                  color:var(--mut); margin:22px 0 10px; padding-bottom:6px;
+                  border-bottom:1px solid var(--line); }
+  main h2.sec-h:first-child { margin-top:0; }
+  #cePanel input[type=range] { accent-color:var(--accv); }
+  #cePanel input[type=number] { background:var(--bg); color:var(--ink);
+          border:1px solid var(--line); border-radius:6px; padding:5px 7px; font:inherit; }
+  #cePanel input[type=number]:focus { outline:none; border-color:var(--accv); }
   .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
            gap:10px; margin-bottom:14px; }
   .card { background:var(--panel); border:1px solid var(--line);
@@ -43,16 +54,21 @@
   button { background:var(--accv); color:#fff; border:0; border-radius:6px;
            padding:6px 10px; cursor:pointer; font-size:12px; margin-top:6px; }
   button.sec { background:#2a2f3a; }
+  select { background:var(--bg); color:var(--ink); border:1px solid var(--line);
+           border-radius:6px; padding:5px 8px; font:inherit; cursor:pointer; }
+  select:focus { outline:none; border-color:var(--accv); }
 </style>
 </head>
 <body>
 <header>
-  <h1>Cluster Headache Monte Carlo — interactive levers
+  <h1>The Global Burden of Cluster Headache
     <span id="status" class="status">loading…</span></h1>
+  <p>A Monte Carlo model of worldwide time spent in attack and at each pain intensity.</p>
 </header>
 <div class="wrap">
   <aside id="panel"></aside>
   <main>
+    <h2 class="sec-h">Global statistics</h2>
     <div class="cards" id="cards"></div>
     <div class="charts">
       <div class="chart" id="c_peak"></div>
@@ -60,11 +76,28 @@
       <div class="chart" id="c_tail"></div>
       <div class="chart" id="c_group"></div>
     </div>
-    <div class="chart full" style="margin-top:14px">
+
+    <h2 class="sec-h">Cost-effectiveness <span id="ceStatus" class="status"></span></h2>
+    <div class="chart full" id="cePanel" style="min-height:0;padding:12px 14px">
+      <div style="display:flex;gap:20px;align-items:flex-end;flex-wrap:wrap;font-size:12px">
+        <label>Annual budget ($)<br><input id="ce_budget" type="number" value="250000" step="1000" style="width:120px"></label>
+        <label>Patients reached / yr<br><input id="ce_reached" type="number" value="500" step="10" style="width:110px"></label>
+        <div style="min-width:230px">
+          <label style="display:flex;justify-content:space-between;align-items:center">
+            <span>Avg effect size <span class="info" title="On average, how much of the maximum possible benefit your beneficiaries actually get. The maximum (effect size = 1) is a patient going from no treatment at all to fully effective treatment. Real programs land below that: some people get treated for the first time, others just trade an okay treatment for a better one, and some would have improved anyway. An effect size of 0.6 means beneficiaries capture, on average, 60% of that full benefit, and only the average matters for the totals. The estimate assumes beneficiaries gain both acute (attack-stopping) and preventive treatment, and that they match the simulated mix of episodic and chronic patients. All the simulation levers on the left feed into these numbers.">ⓘ</span></span>
+            <b id="ce_eff_lab" style="color:var(--accv)">0.60</b>
+          </label>
+          <input id="ce_eff" type="range" min="0" max="1" step="0.01" value="0.6" style="width:100%">
+        </div>
+      </div>
+      <div class="cards" id="ceCards" style="margin:12px 0 4px"></div>
+    </div>
+
+    <h2 class="sec-h">Sensitivity</h2>
+    <div class="chart full">
       <div style="display:flex;gap:8px;align-items:center;padding:6px 8px;flex-wrap:wrap">
-        <strong style="font-size:12px">Sensitivity (tornado):</strong>
+        <strong style="font-size:12px">Metric:</strong>
         <select id="sensMetric">
-          <option value="global_person_years_at_10">Person-years at 10/10</option>
           <option value="global_person_years_at_ge9">Person-years at ≥9/10</option>
           <option value="global_person_days_at_ge9">Person-days at ≥9/10</option>
           <option value="global_person_years_in_attack">Person-years in attack (all)</option>
@@ -94,6 +127,33 @@ const LABELS = {
   e_bout_weeks_mean:"Bout length (weeks)", e_bouts_per_year_mean:"Bouts per year",
   annual_prevalence_per_100k:"Annual prevalence /100k", n_patients:"Simulated patients",
 };
+const TIPS = {
+  annual_prevalence_per_100k:"How many adults out of every 100,000 have cluster headache in a given year. Default 53 comes from a large pooled study (Fischera 2007); across the world's ~5.8B adults that works out to ~3.07M sufferers in a year.",
+  episodic_fraction:"Fraction of patients whose attacks come in bouts with long pain-free gaps (episodic), vs. those who attack nearly year-round (chronic). Studies put ~80–90% in the episodic group (Wei 2018).",
+  n_patients:"How many simulated patients to generate each run. This is just a computing setting: more patients give smoother results but run slower. It is not a real-world quantity.",
+  treatment_access_fraction:"Share of sufferers worldwide who can actually get an effective acute treatment, i.e. a drug like oxygen or a triptan that stops an attack already underway. Built up from rich (~55%), middle (~12%) and low-income (~3%) countries, population-weighted to ~0.18 (Rossi 2020; WHO).",
+  abort_prob_mean:"For someone who has the acute (attack-stopping) treatment, the average chance it actually works on an attack. Pooled from a large patient survey (Rusanen 2022): oxygen 65%, triptans 64% → ~0.64.",
+  treat_fraction:"Of all the attacks a patient with access has, the share they actually bother to treat. Around 85%; the mildest attacks are often left alone (Snoer).",
+  placebo_abort_prob:"Chance an attack ends quickly on its own, with no effective treatment. From the placebo arms of trials, ~17–20% were pain-free within 15 minutes.",
+  aborted_duration_mean_min:"How long an attack lasts when the acute treatment successfully stops it (minutes from onset to pain-free). Injected sumatriptan acts within minutes; oxygen leaves ~78% pain-free by 15 min (Cohen 2009).",
+  treated_peak_intensity_reduction:"How much the acute treatment lowers an attack's worst (peak) pain. Default 0: the peak is reached (~9 min in) before the drug kicks in, so treated and untreated peaks are about equal (Snoer 2019).",
+  preventive_access_fraction:"Share of sufferers on an effective preventive, i.e. a daily medication (e.g. verapamil) that reduces how often attacks happen. Built up the same way as acute access; cheap generics help, but long diagnostic delays hold it to ~0.23.",
+  preventive_responder_mean:"For someone taking a preventive, the average chance it meaningfully helps them. Pooled from a patient survey (Rusanen 2022): verapamil 50%, steroids 55%, lithium 31%, others ~25% → ~0.42.",
+  preventive_responder_reduction_mean:"For the people a preventive helps, the average drop in how many attacks they get. Someone counts as 'helped' only if attacks fall by at least half, so the average drop is a bit above 50% (verapamil and antibody trials).",
+  preventive_responder_reduction_sd:"How much that attack-reduction varies from person to person among those the preventive helps. Values are kept between 50% and 95%.",
+  intensity_mean:"Average worst-pain rating of an attack on a 1–10 scale. Diary studies where patients rate attacks as they happen give ~7 (Snoer), not the scarier '9.7/10' figure, which is people recalling their worst-ever attack.",
+  intensity_between_sd:"How much patients differ from one another in their typical attack pain. Set larger than the within-patient spread below, because studies suggest most variation is between people, not within one person (Snoer).",
+  intensity_within_sd:"How much a single patient's own attacks vary in pain around their personal average. Kept small, since one person's attacks tend to be fairly similar to each other.",
+  duration_median_min:"Typical length of an untreated attack, in minutes (half last longer, half shorter). Diary data give a mean ~39 min; the diagnostic definition allows 15–180 min.",
+  duration_sigma:"How lopsided the spread of attack lengths is: higher values mean more very-long attacks stretching toward 180+ min. A modelling choice.",
+  dur_intensity_slope:"How much more intense attacks also tend to last longer. A study found this link (Russell 1981); the default is gentle (0.08). Set to 0 to switch the link off.",
+  profile_rise_min:"How long an attack takes to climb from onset to its worst pain. About 9 minutes (Torelli 2003: 8.9 min, most within 9).",
+  profile_decline_min:"How long an attack takes to fade from its worst pain back to nothing, about 20 minutes (Snoer 2018). Whatever time is left in between is spent near the peak.",
+  e_attacks_per_day_mean:"For episodic patients, the average number of attacks per day while they are in an active bout. Around 1–3 across studies (median ~1; Vikelis 2016).",
+  c_attacks_per_day_mean:"For chronic patients, the average number of attacks per day. Around 2–3 (median ~2; Vikelis, Gaul).",
+  e_bout_weeks_mean:"For episodic patients, how many weeks an active bout (cluster period) typically lasts before a remission. About 8–9 weeks (Gaul 2012; reviews 6–12).",
+  e_bouts_per_year_mean:"For episodic patients, how many separate bouts they get in a year, usually about one (Gaul 2012).",
+};
 const GROUPS = {
   "Population & scope":["annual_prevalence_per_100k","episodic_fraction","n_patients"],
   "Treatment (abortive)":["treatment_access_fraction","abort_prob_mean","treat_fraction","placebo_abort_prob",
@@ -109,7 +169,8 @@ let SL={}, DEF={}, state={};
 const $ = s => document.querySelector(s);
 const fmt = n => Math.abs(n)>=1e6 ? (n/1e6).toFixed(2)+"M"
                 : Math.abs(n)>=1e3 ? Math.round(n).toLocaleString() : (+n).toFixed(2);
-const dark = {paper_bgcolor:"#181b22",plot_bgcolor:"#181b22",font:{color:"#e6e8ec",size:11},
+const dark = {paper_bgcolor:"#181b22",plot_bgcolor:"#181b22",
+              font:{color:"#e6e8ec",size:11,family:"system-ui,Segoe UI,Roboto,sans-serif"},
               margin:{t:34,r:10,b:38,l:48},showlegend:false};
 
 async function init(){
@@ -123,7 +184,8 @@ async function init(){
       if(!(k in SL)) continue;
       const [mn,mx,st]=SL[k]; const v=DEF[k]; state[k]=v;
       const el=document.createElement("div"); el.className="lever";
-      el.innerHTML=`<label>${LABELS[k]||k} <b id="lab_${k}">${v}</b></label>
+      const tip=(TIPS[k]||"").replace(/"/g,"&quot;");
+      el.innerHTML=`<label><span>${LABELS[k]||k}${tip?` <span class="info" title="${tip}">ⓘ</span>`:""}</span> <b id="lab_${k}">${v}</b></label>
         <input type="range" id="in_${k}" min="${mn}" max="${mx}" step="${st}" value="${v}">`;
       d.appendChild(el);
       el.querySelector("input").addEventListener("input",e=>{
@@ -132,15 +194,17 @@ async function init(){
     }
     p.appendChild(d);
   }
-  const exp=document.createElement("button"); exp.textContent="⬇ Export CSV (3035 sims)";
+  ["ce_budget","ce_reached","ce_eff"].forEach(id=>{
+    $("#"+id).addEventListener("input",()=>{
+      $("#ce_eff_lab").textContent=(+$("#ce_eff").value).toFixed(2);
+      runCE();
+    });
+  });
+  const exp=document.createElement("button"); exp.textContent="⬇ Export CSV (3035 patients)";
+  exp.title="Everything the cost-effectiveness spreadsheet needs: per untreated patient, baseline + 'with access' attacks (abortive / preventive / both) with averted attacks/time/severe/DLES";
   exp.onclick=()=>{ const qs=Object.entries(state).map(([k,v])=>`${k}=${v}`).join("&");
-    window.location.href="/api/export?"+qs+"&n_export=3035"; };
-  p.appendChild(exp);
-  const expcf=document.createElement("button"); expcf.textContent="⬇ Export counterfactual CSV (cost-effectiveness)";
-  expcf.title="Per untreated patient: baseline + 'with access' attacks (abortive / preventive / both)";
-  expcf.onclick=()=>{ const qs=Object.entries(state).map(([k,v])=>`${k}=${v}`).join("&");
     window.location.href="/api/export_counterfactual?"+qs+"&n_export=3035"; };
-  p.appendChild(expcf);
+  p.appendChild(exp);
   const reset=document.createElement("button"); reset.textContent="Reset defaults"; reset.className="sec";
   reset.onclick=()=>{for(const k in state){state[k]=DEF[k]; const i=$("#in_"+k); if(i){i.value=DEF[k]; $("#lab_"+k).textContent=DEF[k];}} run();};
   p.appendChild(reset);
@@ -153,7 +217,28 @@ async function run(){
   const qs=Object.entries(state).map(([k,v])=>`${k}=${v}`).join("&");
   const r=await (await fetch("/api/simulate?"+qs)).json();
   if(r.error){ $("#status").textContent="error: "+r.error; return; }
-  draw(r); $("#status").textContent="done.";
+  draw(r); $("#status").textContent="done."; runCE();
+}
+async function runCE(){
+  $("#ceStatus").textContent="…";
+  const sim=Object.entries(state).map(([k,v])=>`${k}=${v}`).join("&");
+  const ce=`annual_budget=${$("#ce_budget").value}&patients_reached=${$("#ce_reached").value}`
+          +`&effect_size_mean=${$("#ce_eff").value}`;
+  const r=await (await fetch(`/api/cost_effectiveness?${sim}&${ce}`)).json();
+  if(r.error){ $("#ceStatus").textContent="error: "+r.error; return; }
+  const money=x=> x==null ? "–" : "$"+fmt(x);
+  const cards=[
+    ["$ / DLES averted", money(r.cost_per_dles)],
+    ["DLES averted / yr", fmt(r.dles_averted)],
+    ["$ / attack-hour averted", money(r.cost_per_attack_hour)],
+    ["Attack-hours averted / yr", fmt(r.attack_hours_averted)],
+    ["$ / attack averted", money(r.cost_per_attack)],
+    ["Attacks averted / yr", fmt(r.attacks_averted)],
+    ["$ / severe attack averted", money(r.cost_per_severe_attack)],
+    ["Severe (≥9) averted / yr", fmt(r.severe_attacks_averted)],
+  ];
+  $("#ceCards").innerHTML=cards.map(c=>`<div class="card"><div class="v">${c[1]}</div><div class="k">${c[0]}</div></div>`).join("");
+  $("#ceStatus").textContent="";
 }
 function draw(r){
   const s=r.summary;
@@ -163,7 +248,6 @@ function draw(r){
     ["Person-yrs in attack", fmt(s.global_person_years_in_attack)],
     ["Person-yrs at ≥9/10", fmt(s.global_person_years_at_ge9)],
     ["Person-days at ≥9/10", fmt(s.global_person_days_at_ge9)],
-    ["Person-yrs at 10/10", fmt(s.global_person_years_at_10)],
     ["Mean attacks/yr", fmt(s.attacks_per_year_mean)],
     ["Median attacks/yr", fmt(s.attacks_per_year_median)],
     ["Mean peak intensity", s.attack_intensity_mean.toFixed(2)],
@@ -173,10 +257,10 @@ function draw(r){
   ];
   $("#cards").innerHTML=cards.map(c=>`<div class="card"><div class="v">${c[1]}</div><div class="k">${c[0]}</div></div>`).join("");
   const lv=[1,2,3,4,5,6,7,8,9,10];
-  Plotly.react("c_peak",[{x:lv,y:r.by_peak,type:"bar",marker:{color:"#6d5cff"}}],
+  Plotly.react("c_peak",[{x:lv,y:r.by_peak,type:"bar",marker:{color:"#4F2AC4"}}],
     {...dark,title:"Attacks/yr by PEAK intensity",xaxis:{title:"peak NRS",dtick:1},yaxis:{title:"attacks/yr"}},{displayModeBar:false});
   const py=r.time_at_levels.map(m=>m/60/24/365);
-  Plotly.react("c_level",[{x:lv,y:py,type:"bar",marker:{color:"#ff6b3d"}}],
+  Plotly.react("c_level",[{x:lv,y:py,type:"bar",marker:{color:"#F85604"}}],
     {...dark,title:"Person-years/yr spent AT each intensity",xaxis:{title:"NRS",dtick:1},yaxis:{title:"person-years"}},
     {displayModeBar:false});
   Plotly.react("c_tail",[{x:r.attacks_hist.centers,y:r.attacks_hist.counts,type:"bar",marker:{color:"#4aa3ff"}}],
@@ -204,15 +288,15 @@ function drawTornado(r){
   const hov=L.map(l=>`${LABELS[l.lever]||l.lever}<br>low(${l.lo_set})→ ${fmt(l.low)}<br>high(${l.hi_set})→ ${fmt(l.high)}`);
   const up=L.map(l=>l.high>=l.low); // direction: does raising the lever raise the metric?
   const legend=[ // legend-only dummy traces, so the colour code lives in the plot
-    {type:"bar",orientation:"h",x:[null],y:[null],marker:{color:"#6d5cff"},
+    {type:"bar",orientation:"h",x:[null],y:[null],marker:{color:"#4F2AC4"},
      name:"raising lever → more burden",showlegend:true,hoverinfo:"skip"},
-    {type:"bar",orientation:"h",x:[null],y:[null],marker:{color:"#ff6b3d"},
+    {type:"bar",orientation:"h",x:[null],y:[null],marker:{color:"#F85604"},
      name:"raising lever → less burden",showlegend:true,hoverinfo:"skip"},
     {type:"scatter",mode:"lines",x:[null],y:[null],line:{color:"#9aa3b2",dash:"dot"},
      name:"current base value",showlegend:true,hoverinfo:"skip"}];
   Plotly.react("c_tornado",[{
       type:"bar", orientation:"h", y:names, x:span, base:base,
-      marker:{color:up.map(u=>u?"#6d5cff":"#ff6b3d")},
+      marker:{color:up.map(u=>u?"#4F2AC4":"#F85604")},
       hovertext:hov, hoverinfo:"text", showlegend:false
     }, ...legend],
     {...dark, margin:{t:48,r:20,b:40,l:200}, height:Math.max(420, names.length*26+100),

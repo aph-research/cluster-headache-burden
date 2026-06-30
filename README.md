@@ -114,11 +114,32 @@ sweep("abort_prob_mean", [0.5, 0.6, 0.7], metric="global_person_years_in_attack"
 
 ---
 
-## Counterfactual export (cost-effectiveness)
+## Cost-effectiveness (in the dashboard)
 
-For estimating the impact of giving an untreated patient *access to treatment* (e.g. a
-nonprofit's cost-effectiveness), the dashboard has a **"Export counterfactual CSV"** button
-(and a `/api/export_counterfactual` endpoint backed by `counterfactual_csv()`).
+The dashboard has a **cost-effectiveness panel** that estimates what a nonprofit averts by
+helping patients reach treatment — no spreadsheet required. Inputs: annual budget, patients
+reached/yr, and an **average effect size**. Outputs: attacks / severe attacks / attack-hours /
+**DLES** averted per year, and the corresponding cost-effectiveness ratios ($ per DLES averted,
+etc.). It assumes beneficiaries gain *both* acute and preventive treatment and follow the
+simulated episodic/chronic mix, and it reflects every simulation lever on the left, via
+`cost_effectiveness()` / the `/api/cost_effectiveness` endpoint. (The underlying function still
+accepts `channel` and `beneficiary_episodic_share` arguments if you want to model a single
+channel or a targeted cohort from Python.)
+
+**Effect size** = the average fraction of the full *no-treatment → full-access* benefit your
+beneficiaries actually capture. It absorbs both the new-access/upgrade blend (some patients gain
+treatment from scratch, others just upgrade a mediocre one) and additionality. If the effect
+size is independent of the patient, only its **mean** affects the totals:
+
+    total_averted = patients_reached × effect_size_mean × mean(full_benefit)
+    cost-effectiveness = annual_budget / total_averted
+
+**DLES** (Days Lived in Extreme Suffering) = minutes in ≥9/10 pain ÷ 60 ÷ 24.
+
+### Counterfactual export
+
+For raw per-patient rows, the **"Export CSV"** button produces a spreadsheet-ready file (via
+`/api/export_counterfactual` / `counterfactual_csv()`).
 
 Each row is one currently-**untreated** patient, with their baseline attacks plus the model's
 counterfactual "with access" attacks under **three interventions** — abortive-only,
@@ -133,8 +154,7 @@ remove whole attacks**, and **neither changes the peak**. A single scalar can't 
 it typically undercounts time-in-pain and DLES averted by ~2× when abortive access is involved,
 because the suffering is dominated by time at ≥9/10, which abortives cut without removing attacks.
 
-DLES (Days Lived in Extreme Suffering) = minutes in ≥9/10 pain ÷ 60 ÷ 24. Lever changes on the
-dashboard (efficacy, access, etc.) flow through to the export.
+Lever changes on the dashboard (efficacy, access, etc.) flow through to the export.
 
 ## Validation
 

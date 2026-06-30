@@ -426,40 +426,27 @@ def sweep(param: str, values, metric: str, base: Config | None = None):
 
 
 # --------------------------------------------------------------------------- #
-#  Counterfactual access export (for cost-effectiveness analysis)             #
+#  Counterfactual access (for cost-effectiveness analysis)                    #
 # --------------------------------------------------------------------------- #
-def counterfactual_csv(cfg: Config | None = None, **overrides) -> str:
-    """Per-(currently-untreated)-patient baseline attacks AND the model's
-    counterfactual 'with access' attacks, under three interventions:
-    abortive-only, preventive-only, and both.
+CF_CHANNELS = ("abortive", "preventive", "both")
 
-    Use case: estimate what a nonprofit averts by giving an untreated patient
-    access to treatment. Unlike a flat '% fewer attacks', this captures the real
-    shape of the benefit -- abortives truncate DURATION (same attack count),
-    preventives remove whole ATTACKS, neither changes the PEAK.
 
-    Each scenario emits the attack-tuple list in the SAME format as grouped_csv
-    (`(dur_int,intensity.2f)` joined by ';'), so a spreadsheet's own DLES /
-    severity / time formulas can be applied to each scenario column directly;
-    averted = (baseline metric) - (scenario metric). Convenience averted columns
-    (attacks / minutes / severe>=9) are included too.
+def _counterfactual(cfg: Config, want_tuples: bool = False) -> dict:
+    """Core counterfactual: per-(currently-untreated)-patient baseline burden and
+    the burden AVERTED by gaining access, under three interventions (abortive /
+    preventive / both). Captures the real shape of the benefit -- abortives
+    truncate DURATION (same attack count), preventives remove whole ATTACKS,
+    neither changes the PEAK.
 
-    All patients are generated as currently UNTREATED (the beneficiary pool); the
-    counterfactual is that same patient gaining access. Additionality / how many
-    beneficiaries you reach belong in the spreadsheet, not here."""
-    import io
-    cfg = cfg or Config()
-    if overrides:
-        cfg = replace(cfg, **overrides)
-
-    # baseline cohort: nobody has access
+    Returns numpy arrays (length n_patients): is_episodic, random_id, base_attacks,
+    base_min, base_severe, base_dles, and `{channel}_{attacks,min,severe,dles}_averted`.
+    If want_tuples, also returns `_tuples` (per-patient attack-tuple strings)."""
     base = simulate(replace(cfg, treatment_access_fraction=0.0,
                             preventive_access_fraction=0.0))
     n = cfg.n_patients
     rp = np.random.default_rng(cfg.seed + 101)   # preventive draws
     ra = np.random.default_rng(cfg.seed + 202)   # abortive draws
 
-    # per-patient: preventive responder + frequency cut; abortive efficacy
     responder = rp.random(n) < cfg.preventive_responder_mean
     reduction = np.where(
         responder,
@@ -468,32 +455,25 @@ def counterfactual_csv(cfg: Config | None = None, **overrides) -> str:
                 cfg.preventive_reduction_floor, cfg.preventive_reduction_cap),
         0.0)
     eff = np.clip(ra.normal(cfg.abort_prob_mean, cfg.abort_prob_sd, n), 0.0, 0.95)
+    rid = np.random.default_rng(cfg.seed + 303).random(n)   # for sampling
 
     offs = np.concatenate(([0], np.cumsum(base.n_attacks)))
     dur, inten = base.duration, base.intensity
+
+    out = {
+        "is_episodic": base.is_episodic, "random_id": rid,
+        "base_attacks": base.n_attacks.astype(float),
+        "base_min": np.zeros(n), "base_severe": np.zeros(n), "base_dles": np.zeros(n),
+    }
+    for c in CF_CHANNELS:
+        for m in ("attacks_averted", "min_averted", "severe_averted", "dles_averted"):
+            out[f"{c}_{m}"] = np.zeros(n)
+    tuples = {k: [None] * n for k in ("base", *CF_CHANNELS)} if want_tuples else None
 
     def tup(d, it):
         return ";".join(f"({int(round(float(x)))},{float(y):.2f})"
                         for x, y in zip(d, it))
 
-    def dles(d, it):
-        # Days Lived in Extreme Suffering = minutes in >=9/10 pain / 60 / 24.
-        # Whole duration of any attack peaking >=9 counts (matches the spreadsheet
-        # convention; the dashboard's time_at_levels() uses the finer profile).
-        return float(d[it >= 9].sum()) / 1440.0
-
-    buf = io.StringIO()
-    w = csv.writer(buf)
-    w.writerow([
-        "id", "type", "total_attacks", "total_duration",
-        "severe_attacks_baseline", "dles_baseline", "attacks",
-        "attacks_with_access_abortive", "attacks_averted_abortive",
-        "time_averted_abortive_min", "severe_averted_abortive", "dles_averted_abortive",
-        "attacks_with_access_preventive", "attacks_averted_preventive",
-        "time_averted_preventive_min", "severe_averted_preventive", "dles_averted_preventive",
-        "attacks_with_access_both", "attacks_averted_both",
-        "time_averted_both_min", "severe_averted_both", "dles_averted_both",
-    ])
     for i in range(n):
         a, b = int(offs[i]), int(offs[i + 1])
         d = dur[a:b].astype(float)
@@ -501,7 +481,10 @@ def counterfactual_csv(cfg: Config | None = None, **overrides) -> str:
         nb = len(d)
         base_min = float(d.sum())
         sev_base = int((it >= 9).sum())
-        dles_base = dles(d, it)
+        dles_base = float(d[it >= 9].sum()) / 1440.0
+        out["base_min"][i] = base_min
+        out["base_severe"][i] = sev_base
+        out["base_dles"][i] = dles_base
 
         # abortive: truncate aborted attacks' duration (per-attack on baseline)
         treated = ra.random(nb) < cfg.treat_fraction
@@ -518,21 +501,117 @@ def counterfactual_csv(cfg: Config | None = None, **overrides) -> str:
             if n_rm > 0:
                 keep[rp.choice(nb, size=min(n_rm, nb), replace=False)] = False
 
-        def scen(d_use, it_use):
-            return (tup(d_use, it_use), nb - len(d_use),
-                    int(round(base_min - float(d_use.sum()))),
-                    sev_base - int((it_use >= 9).sum()),
-                    round(dles_base - dles(d_use, it_use), 5))
+        scen = {"abortive": (d_trunc, it),
+                "preventive": (d[keep], it[keep]),
+                "both": (d_trunc[keep], it[keep])}
+        for c, (du, iu) in scen.items():
+            out[f"{c}_attacks_averted"][i] = nb - len(du)
+            out[f"{c}_min_averted"][i] = base_min - float(du.sum())
+            out[f"{c}_severe_averted"][i] = sev_base - int((iu >= 9).sum())
+            out[f"{c}_dles_averted"][i] = dles_base - float(du[iu >= 9].sum()) / 1440.0
+        if want_tuples:
+            tuples["base"][i] = tup(d, it)
+            for c, (du, iu) in scen.items():
+                tuples[c][i] = tup(du, iu)
+    if want_tuples:
+        out["_tuples"] = tuples
+    return out
 
-        ab = scen(d_trunc, it)            # abortive only
-        pv = scen(d[keep], it[keep])      # preventive only
-        bo = scen(d_trunc[keep], it[keep])  # both
-        w.writerow([
-            i, "episodic" if base.is_episodic[i] else "chronic", nb,
-            int(round(base_min)), sev_base, round(dles_base, 5), tup(d, it),
-            *ab, *pv, *bo,
-        ])
+
+def counterfactual_csv(cfg: Config | None = None, **overrides) -> str:
+    """CSV of per-untreated-patient baseline + counterfactual 'with access' attacks
+    (abortive / preventive / both), with the attack-tuple lists (same format as
+    grouped_csv, so a spreadsheet's own DLES/severity formulas apply) plus averted
+    columns (attacks / minutes / severe>=9 / DLES). See _counterfactual()."""
+    import io
+    cfg = cfg or Config()
+    if overrides:
+        cfg = replace(cfg, **overrides)
+    d = _counterfactual(cfg, want_tuples=True)
+    t = d["_tuples"]
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow([
+        "id", "type", "random_id", "total_attacks", "total_duration",
+        "severe_attacks_baseline", "dles_baseline", "attacks",
+        "attacks_with_access_abortive", "attacks_averted_abortive",
+        "time_averted_abortive_min", "severe_averted_abortive", "dles_averted_abortive",
+        "attacks_with_access_preventive", "attacks_averted_preventive",
+        "time_averted_preventive_min", "severe_averted_preventive", "dles_averted_preventive",
+        "attacks_with_access_both", "attacks_averted_both",
+        "time_averted_both_min", "severe_averted_both", "dles_averted_both",
+    ])
+    for i in range(cfg.n_patients):
+        row = [i, "episodic" if d["is_episodic"][i] else "chronic",
+               round(float(d["random_id"][i]), 9), int(d["base_attacks"][i]),
+               int(round(d["base_min"][i])), int(d["base_severe"][i]),
+               round(d["base_dles"][i], 5), t["base"][i]]
+        for c in CF_CHANNELS:
+            row += [t[c][i], int(d[f"{c}_attacks_averted"][i]),
+                    int(round(d[f"{c}_min_averted"][i])),
+                    int(d[f"{c}_severe_averted"][i]),
+                    round(d[f"{c}_dles_averted"][i], 5)]
+        w.writerow(row)
     return buf.getvalue()
+
+
+def cost_effectiveness(cfg: Config | None = None, *, annual_budget: float = 250_000.0,
+                       patients_reached: float = 500.0, channel: str = "both",
+                       effect_size_mean: float = 0.6,
+                       beneficiary_episodic_share: float | None = None,
+                       **overrides) -> dict:
+    """End-to-end cost-effectiveness of helping CH patients reach treatment.
+
+    Model: each beneficiary captures, on average, `effect_size_mean` of the full
+    no-treatment -> full-access benefit for the chosen `channel`. This single mean
+    absorbs the new-access/upgrade blend AND additionality (if independent of the
+    patient, only the mean affects totals). `beneficiary_episodic_share` lets you
+    model targeting (None = use the simulated population mix).
+
+        total_averted = patients_reached * effect_size_mean * mean(full_benefit)
+        cost-effectiveness = annual_budget / total_averted
+    """
+    cfg = cfg or Config()
+    if overrides:
+        cfg = replace(cfg, **overrides)
+    if channel not in CF_CHANNELS:
+        raise ValueError(f"channel must be one of {CF_CHANNELS}")
+
+    d = _counterfactual(cfg)
+    ep = d["is_episodic"]
+
+    def per_patient(metric):
+        arr = d[f"{channel}_{metric}"]
+        if beneficiary_episodic_share is None:
+            return float(arr.mean())
+        s = beneficiary_episodic_share
+        me = float(arr[ep].mean()) if ep.any() else 0.0
+        mc = float(arr[~ep].mean()) if (~ep).any() else 0.0
+        return s * me + (1.0 - s) * mc
+
+    f = effect_size_mean * patients_reached
+    attacks = per_patient("attacks_averted") * f
+    severe = per_patient("severe_averted") * f
+    hours = per_patient("min_averted") * f / 60.0
+    dles = per_patient("dles_averted") * f
+
+    def ratio(x):
+        return (annual_budget / x) if x > 0 else None
+
+    return {
+        "annual_budget": annual_budget, "patients_reached": patients_reached,
+        "cost_per_patient": (annual_budget / patients_reached
+                             if patients_reached else None),
+        "channel": channel, "effect_size_mean": effect_size_mean,
+        "beneficiary_episodic_share": beneficiary_episodic_share,
+        "attacks_averted": attacks, "severe_attacks_averted": severe,
+        "attack_hours_averted": hours, "dles_averted": dles,
+        "cost_per_attack": ratio(attacks),
+        "cost_per_severe_attack": ratio(severe),
+        "cost_per_attack_hour": ratio(hours),
+        "cost_per_dles": ratio(dles),
+        "dles_per_1000usd": (dles / annual_budget * 1000.0) if annual_budget else None,
+    }
 
 
 # --------------------------------------------------------------------------- #

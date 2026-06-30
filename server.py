@@ -22,7 +22,7 @@ from urllib.parse import urlparse, parse_qs
 
 import numpy as np
 
-from ch_simulation import Config, simulate, counterfactual_csv
+from ch_simulation import Config, simulate, counterfactual_csv, cost_effectiveness
 
 HERE = Path(__file__).parent
 INDEX = HERE / "index.html"
@@ -207,6 +207,23 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
+            except Exception as e:  # noqa: BLE001
+                self._json({"error": str(e)}, code=400)
+        elif u.path == "/api/cost_effectiveness":
+            # end-to-end cost-effectiveness; combines sim levers with org inputs.
+            try:
+                q = parse_qs(u.query)
+                overrides = {k: _coerce(k, v[0]) for k, v in q.items()
+                             if k in SLIDERS}
+                overrides["n_patients"] = int(float(q.get("ce_n", ["8000"])[0]))
+                kw = dict(
+                    annual_budget=float(q.get("annual_budget", ["250000"])[0]),
+                    patients_reached=float(q.get("patients_reached", ["500"])[0]),
+                    effect_size_mean=float(q.get("effect_size_mean", ["0.6"])[0]),
+                )
+                # Always model both channels reached; beneficiaries follow the
+                # simulated episodic/chronic mix (channel="both", share=None).
+                self._json(cost_effectiveness(**kw, **overrides))
             except Exception as e:  # noqa: BLE001
                 self._json({"error": str(e)}, code=400)
         elif u.path == "/api/export_counterfactual":
