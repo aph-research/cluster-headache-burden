@@ -136,6 +136,11 @@ async function init(){
   exp.onclick=()=>{ const qs=Object.entries(state).map(([k,v])=>`${k}=${v}`).join("&");
     window.location.href="/api/export?"+qs+"&n_export=3035"; };
   p.appendChild(exp);
+  const expcf=document.createElement("button"); expcf.textContent="⬇ Export counterfactual CSV (cost-effectiveness)";
+  expcf.title="Per untreated patient: baseline + 'with access' attacks (abortive / preventive / both)";
+  expcf.onclick=()=>{ const qs=Object.entries(state).map(([k,v])=>`${k}=${v}`).join("&");
+    window.location.href="/api/export_counterfactual?"+qs+"&n_export=3035"; };
+  p.appendChild(expcf);
   const reset=document.createElement("button"); reset.textContent="Reset defaults"; reset.className="sec";
   reset.onclick=()=>{for(const k in state){state[k]=DEF[k]; const i=$("#in_"+k); if(i){i.value=DEF[k]; $("#lab_"+k).textContent=DEF[k];}} run();};
   p.appendChild(reset);

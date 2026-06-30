@@ -22,7 +22,7 @@ from urllib.parse import urlparse, parse_qs
 
 import numpy as np
 
-from ch_simulation import Config, simulate
+from ch_simulation import Config, simulate, counterfactual_csv
 
 HERE = Path(__file__).parent
 INDEX = HERE / "index.html"
@@ -204,6 +204,24 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_header("Content-Type", "text/csv; charset=utf-8")
                 self.send_header("Content-Disposition",
                                  'attachment; filename="ch_simulations.csv"')
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            except Exception as e:  # noqa: BLE001
+                self._json({"error": str(e)}, code=400)
+        elif u.path == "/api/export_counterfactual":
+            # per-untreated-patient baseline + counterfactual 'with access' attacks
+            # under abortive-only / preventive-only / both, for cost-effectiveness.
+            try:
+                q = parse_qs(u.query)
+                overrides = {k: _coerce(k, v[0]) for k, v in q.items()
+                             if k in SLIDERS}
+                overrides["n_patients"] = int(float(q.get("n_export", ["3035"])[0]))
+                body = counterfactual_csv(**overrides).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/csv; charset=utf-8")
+                self.send_header("Content-Disposition",
+                                 'attachment; filename="ch_counterfactual.csv"')
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)

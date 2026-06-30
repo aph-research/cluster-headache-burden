@@ -426,6 +426,116 @@ def sweep(param: str, values, metric: str, base: Config | None = None):
 
 
 # --------------------------------------------------------------------------- #
+#  Counterfactual access export (for cost-effectiveness analysis)             #
+# --------------------------------------------------------------------------- #
+def counterfactual_csv(cfg: Config | None = None, **overrides) -> str:
+    """Per-(currently-untreated)-patient baseline attacks AND the model's
+    counterfactual 'with access' attacks, under three interventions:
+    abortive-only, preventive-only, and both.
+
+    Use case: estimate what a nonprofit averts by giving an untreated patient
+    access to treatment. Unlike a flat '% fewer attacks', this captures the real
+    shape of the benefit -- abortives truncate DURATION (same attack count),
+    preventives remove whole ATTACKS, neither changes the PEAK.
+
+    Each scenario emits the attack-tuple list in the SAME format as grouped_csv
+    (`(dur_int,intensity.2f)` joined by ';'), so a spreadsheet's own DLES /
+    severity / time formulas can be applied to each scenario column directly;
+    averted = (baseline metric) - (scenario metric). Convenience averted columns
+    (attacks / minutes / severe>=9) are included too.
+
+    All patients are generated as currently UNTREATED (the beneficiary pool); the
+    counterfactual is that same patient gaining access. Additionality / how many
+    beneficiaries you reach belong in the spreadsheet, not here."""
+    import io
+    cfg = cfg or Config()
+    if overrides:
+        cfg = replace(cfg, **overrides)
+
+    # baseline cohort: nobody has access
+    base = simulate(replace(cfg, treatment_access_fraction=0.0,
+                            preventive_access_fraction=0.0))
+    n = cfg.n_patients
+    rp = np.random.default_rng(cfg.seed + 101)   # preventive draws
+    ra = np.random.default_rng(cfg.seed + 202)   # abortive draws
+
+    # per-patient: preventive responder + frequency cut; abortive efficacy
+    responder = rp.random(n) < cfg.preventive_responder_mean
+    reduction = np.where(
+        responder,
+        np.clip(rp.normal(cfg.preventive_responder_reduction_mean,
+                          cfg.preventive_responder_reduction_sd, n),
+                cfg.preventive_reduction_floor, cfg.preventive_reduction_cap),
+        0.0)
+    eff = np.clip(ra.normal(cfg.abort_prob_mean, cfg.abort_prob_sd, n), 0.0, 0.95)
+
+    offs = np.concatenate(([0], np.cumsum(base.n_attacks)))
+    dur, inten = base.duration, base.intensity
+
+    def tup(d, it):
+        return ";".join(f"({int(round(float(x)))},{float(y):.2f})"
+                        for x, y in zip(d, it))
+
+    def dles(d, it):
+        # Days Lived in Extreme Suffering = minutes in >=9/10 pain / 60 / 24.
+        # Whole duration of any attack peaking >=9 counts (matches the spreadsheet
+        # convention; the dashboard's time_at_levels() uses the finer profile).
+        return float(d[it >= 9].sum()) / 1440.0
+
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow([
+        "id", "type", "total_attacks", "total_duration",
+        "severe_attacks_baseline", "dles_baseline", "attacks",
+        "attacks_with_access_abortive", "attacks_averted_abortive",
+        "time_averted_abortive_min", "severe_averted_abortive", "dles_averted_abortive",
+        "attacks_with_access_preventive", "attacks_averted_preventive",
+        "time_averted_preventive_min", "severe_averted_preventive", "dles_averted_preventive",
+        "attacks_with_access_both", "attacks_averted_both",
+        "time_averted_both_min", "severe_averted_both", "dles_averted_both",
+    ])
+    for i in range(n):
+        a, b = int(offs[i]), int(offs[i + 1])
+        d = dur[a:b].astype(float)
+        it = inten[a:b]
+        nb = len(d)
+        base_min = float(d.sum())
+        sev_base = int((it >= 9).sum())
+        dles_base = dles(d, it)
+
+        # abortive: truncate aborted attacks' duration (per-attack on baseline)
+        treated = ra.random(nb) < cfg.treat_fraction
+        aborted = treated & (ra.random(nb) < eff[i])
+        abort_dur = np.clip(ra.normal(cfg.aborted_duration_mean_min,
+                                      cfg.aborted_duration_sd_min, nb),
+                            cfg.aborted_duration_floor_min, None)
+        d_trunc = np.where(aborted, np.minimum(d, abort_dur), d)
+
+        # preventive: remove a random subset of whole attacks
+        keep = np.ones(nb, dtype=bool)
+        if reduction[i] > 0 and nb > 0:
+            n_rm = int(round(reduction[i] * nb))
+            if n_rm > 0:
+                keep[rp.choice(nb, size=min(n_rm, nb), replace=False)] = False
+
+        def scen(d_use, it_use):
+            return (tup(d_use, it_use), nb - len(d_use),
+                    int(round(base_min - float(d_use.sum()))),
+                    sev_base - int((it_use >= 9).sum()),
+                    round(dles_base - dles(d_use, it_use), 5))
+
+        ab = scen(d_trunc, it)            # abortive only
+        pv = scen(d[keep], it[keep])      # preventive only
+        bo = scen(d_trunc[keep], it[keep])  # both
+        w.writerow([
+            i, "episodic" if base.is_episodic[i] else "chronic", nb,
+            int(round(base_min)), sev_base, round(dles_base, 5), tup(d, it),
+            *ab, *pv, *bo,
+        ])
+    return buf.getvalue()
+
+
+# --------------------------------------------------------------------------- #
 #  Demo                                                                       #
 # --------------------------------------------------------------------------- #
 if __name__ == "__main__":

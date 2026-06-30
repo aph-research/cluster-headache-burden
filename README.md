@@ -114,6 +114,28 @@ sweep("abort_prob_mean", [0.5, 0.6, 0.7], metric="global_person_years_in_attack"
 
 ---
 
+## Counterfactual export (cost-effectiveness)
+
+For estimating the impact of giving an untreated patient *access to treatment* (e.g. a
+nonprofit's cost-effectiveness), the dashboard has a **"Export counterfactual CSV"** button
+(and a `/api/export_counterfactual` endpoint backed by `counterfactual_csv()`).
+
+Each row is one currently-**untreated** patient, with their baseline attacks plus the model's
+counterfactual "with access" attacks under **three interventions** — abortive-only,
+preventive-only, and both. The `attacks_with_access_*` columns use the same `(dur,intensity)`
+tuple format as the raw export, so a spreadsheet's own DLES / severity formulas can be applied
+to each scenario; convenience averted columns (attacks, minutes, severe ≥9, and
+`dles_averted_*`) are included too.
+
+Why it beats a flat "X% fewer attacks": access changes the *shape* of the burden, not just the
+count. **Abortives truncate duration** (same attack count, shorter attacks), **preventives
+remove whole attacks**, and **neither changes the peak**. A single scalar can't represent that —
+it typically undercounts time-in-pain and DLES averted by ~2× when abortive access is involved,
+because the suffering is dominated by time at ≥9/10, which abortives cut without removing attacks.
+
+DLES (Days Lived in Extreme Suffering) = minutes in ≥9/10 pain ÷ 60 ÷ 24. Lever changes on the
+dashboard (efficacy, access, etc.) flow through to the export.
+
 ## Validation
 
 [`validate.py`](validate.py) runs a battery of sanity checks and prints a PASS/WARN/FAIL
