@@ -26,6 +26,10 @@ Provenance for every default: CH_simulation_sources.md. Key modelling decisions:
   * Per-attack peak comes from PROSPECTIVE diaries (mean ~7), NOT the
     ceiling-loaded retrospective 9.7/72%-at-10 (Burish) -- that is a recalled
     "worst-ever" rating, not a per-attack measurement.
+  * PREVENTIVES act on a separate channel from abortives: they cut attack
+    FREQUENCY (annual attack count), via shorter bouts (episodic) or lower daily
+    frequency (chronic), NOT per-attack duration or peak. Modelled as a
+    responder rate + a fractional frequency cut among responders.
 """
 
 from __future__ import annotations
@@ -60,7 +64,7 @@ class Config:
     treatment_access_fraction: float = 0.18
 
     # ---- Treatment: per-patient abortive efficacy ------------------------- #
-    abort_prob_mean: float = 0.60                 # pooled responder rates (Rusanen 2022)
+    abort_prob_mean: float = 0.64                 # O2+triptan participant-weighted (Rusanen 2022)
     abort_prob_sd: float = 0.22
     treat_fraction: float = 0.85                  # share of attacks actually treated (Snoer)
     placebo_abort_prob: float = 0.18              # self/placebo abort (Cohen, suma RCTs)
@@ -70,6 +74,19 @@ class Config:
     aborted_duration_sd_min: float = 6.0
     aborted_duration_floor_min: float = 3.0
     treated_peak_intensity_reduction: float = 0.0 # fraction in [0,1]; default 0 (see docstring)
+
+    # ---- Preventive treatment: reduces attack FREQUENCY ------------------- #
+    # A preventive (verapamil first-line; corticosteroids transitional; lithium,
+    # topiramate, melatonin, galcanezumab) lowers HOW MANY attacks a patient has
+    # -- via shorter bouts (episodic) or lower daily frequency (chronic). Modelled
+    # as a fractional cut to the patient's ANNUAL attack count, independent of
+    # abortive access. Acts on frequency only (NOT per-attack duration or peak).
+    preventive_access_fraction: float = 0.30      # share of patients on a preventive
+    preventive_responder_mean: float = 0.42       # P(responds | on preventive); Rusanen 2022
+    preventive_responder_reduction_mean: float = 0.55  # freq cut among responders
+    preventive_responder_reduction_sd: float = 0.20
+    preventive_reduction_floor: float = 0.50      # responder == >=50% reduction (trial convention)
+    preventive_reduction_cap: float = 0.95
 
     # ---- Per-attack PEAK INTENSITY: two-level model (NRS 1..10) ----------- #
     intensity_mean: float = 7.0                   # population mean peak (Snoer ~7.0)
@@ -148,6 +165,9 @@ class SimulationResult:
     efficacy: np.ndarray
     patient_severity: np.ndarray       # latent per-patient mean peak intensity
     n_attacks: np.ndarray
+    n_attacks_baseline: np.ndarray     # per-patient attacks BEFORE preventive reduction
+    on_preventive: np.ndarray          # per-patient
+    prev_reduction: np.ndarray         # per-patient fractional frequency reduction
     patient_idx: np.ndarray            # per-attack
     duration: np.ndarray               # minutes
     intensity: np.ndarray              # integer 1..10 (peak)
@@ -262,6 +282,12 @@ class SimulationResult:
             "n_sufferers_global": self.n_sufferers_global,
             "pct_episodic": 100 * self.is_episodic.mean(),
             "pct_with_access": 100 * self.has_access.mean(),
+            "pct_on_preventive": 100 * self.on_preventive.mean(),
+            "pct_preventive_responders": 100 * float((self.prev_reduction > 0).mean()),
+            "global_attacks_averted_by_preventive": float(
+                (self.n_attacks_baseline.sum() - self.n_attacks.sum()) * self.scale_factor),
+            "pct_attacks_averted_by_preventive": 100 * (
+                1.0 - self.n_attacks.sum() / max(1, self.n_attacks_baseline.sum())),
             "attacks_per_year_mean": float(self.n_attacks.mean()),
             "attacks_per_year_median": float(np.median(self.n_attacks)),
             "attacks_per_year_mean_episodic": float(self.n_attacks[self.is_episodic].mean()),
@@ -319,8 +345,24 @@ def simulate(cfg: Config | None = None, **overrides) -> SimulationResult:
                     apd_lo, apd_hi)
     chron = cfg.c_active_fraction * 365.0 * c_apd
 
-    n_attacks = np.where(is_episodic, epis, chron)
-    n_attacks = np.clip(np.round(n_attacks), 1, cfg.max_attacks_per_patient).astype(int)
+    n_attacks_base = np.where(is_episodic, epis, chron)
+    n_attacks_baseline = np.clip(np.round(n_attacks_base), 1,
+                                 cfg.max_attacks_per_patient).astype(int)
+
+    # ---- preventive treatment: cut annual attack frequency --------------- #
+    # Patient is on a preventive (access) -> may be a responder -> annual attacks
+    # are cut by a fractional reduction. Non-responders get no frequency benefit.
+    on_preventive = rng.random(n) < cfg.preventive_access_fraction
+    prev_responder = on_preventive & (rng.random(n) < cfg.preventive_responder_mean)
+    prev_reduction = np.where(
+        prev_responder,
+        np.clip(rng.normal(cfg.preventive_responder_reduction_mean,
+                           cfg.preventive_responder_reduction_sd, n),
+                cfg.preventive_reduction_floor, cfg.preventive_reduction_cap),
+        0.0,
+    )
+    n_attacks = np.clip(np.round(n_attacks_base * (1.0 - prev_reduction)), 1,
+                        cfg.max_attacks_per_patient).astype(int)
 
     total = int(n_attacks.sum())
     patient_idx = np.repeat(np.arange(n), n_attacks)
@@ -352,7 +394,9 @@ def simulate(cfg: Config | None = None, **overrides) -> SimulationResult:
     n_glob = cfg.annual_prevalence_per_100k / 1e5 * cfg.adult_population
     return SimulationResult(
         cfg=cfg, is_episodic=is_episodic, has_access=has_access, efficacy=efficacy,
-        patient_severity=patient_severity, n_attacks=n_attacks, patient_idx=patient_idx,
+        patient_severity=patient_severity, n_attacks=n_attacks,
+        n_attacks_baseline=n_attacks_baseline, on_preventive=on_preventive,
+        prev_reduction=prev_reduction, patient_idx=patient_idx,
         duration=duration, intensity=intensity, aborted=aborted,
         scale_factor=n_glob / n, n_sufferers_global=n_glob,
     )

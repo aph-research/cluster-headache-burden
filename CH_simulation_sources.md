@@ -53,7 +53,7 @@ Hence `treated_peak_intensity_reduction` defaults to 0.
 | Lever | Default | Evidence |
 |---|---|---|
 | `treatment_access_fraction` | 0.18 | **[measured HIC + inferred LMIC]** Global fraction with real access to an effective abortive. Independent estimate **~0.18** (sensitivity range 0.10–0.30): HIC ~0.55 (Rossi 2020: EU 47% unrestricted, 63–66% reimbursed; Evers & Rapoport 2017: O₂ reimbursed in 50% of mostly-HIC countries), MIC ~0.12, LIC ~0.03, pop-weighted (~85% LMIC). Bounded above by WHO neurological treatment-gap data (>50% MIC, >75% LIC) + low LMIC triptan consumption + pooled 10.4-yr diagnostic delay (J Headache Pain 2025). Only the HIC input is measured; LMIC values are inferences. **First lever to vary in sensitivity.** |
-| `abort_prob_mean` (SD) | 0.60 (0.22) | **[pooled]** patient-level responder rates (Rusanen 2022): oxygen 65%, triptans 64%, SC sumatriptan ~78%, psilocybin 67%. |
+| `abort_prob_mean` (SD) | 0.64 (0.22) | **[pooled]** participant-weighted responder rate across the two abortives that constitute "access" (Rusanen 2022): **oxygen 65% (n=3105)** and **triptans 64% (n=3843)** → weighted **0.644**. (Other Rusanen abortives, for reference: psilocybin 67% n=172, ergot 31% n=1103, energy drinks 22% n=343, lidocaine 12% n=549, opioids 10% n=822 — these are not the "access" channel.) SD spans the individual range. |
 | `treat_fraction` | 0.85 | **[measured]** ~85% of attacks treated even with access; mild ones skipped (Snoer). |
 | `placebo_abort_prob` | 0.18 | **[measured]** acute-RCT placebo pain-free at 15 min: SC suma 17% (Cochrane), oxygen 20% (Cohen 2009). |
 | `aborted_duration_mean_min` (SD) | 15 (6) | **[measured]** time-to-pain-free: SC sumatriptan ~7 min lag then seconds (Hardebo 1993); oxygen 78% pain-free by 15 min (Cohen 2009 JAMA, vs 20% air). |
@@ -71,14 +71,34 @@ Hence `treated_peak_intensity_reduction` defaults to 0.
 | Intranasal lidocaine | — | ~27% moderate relief | slow (~37 min) | Robbins 1995; Costa 2000 |
 | Opioids | no efficacy data; not recommended (AHS) | — | — | — |
 
-### Preventives (not yet in model; would reduce attack FREQUENCY/bout length)
-Responder rates [pooled, Rusanen 2022]: LSD 79%, psilocybin 69%, ergolines 61%,
-corticosteroids 55%, verapamil 50%, lithium 31%, melatonin/topiramate 25%, propranolol 9%.
-Verapamil is first-line preventive (Leone 2000 RCT). Galcanezumab reduces episodic
-weekly frequency (Goadsby 2019 NEJM). Psilocybin RCT (Schindler 2022, n=14) was
-statistically **negative** (−3.2 attacks/wk, p=0.25); the "~50% reduction" is an
-uncontrolled within-subject extension (n=10). Survey "85% abort" (Sewell 2006) is
+## Preventive treatment (FREQUENCY channel) — `n_attacks` reduction
+**Now in the model.** A preventive lowers attack FREQUENCY (annual attack count) — via
+shorter bouts (episodic) or lower daily frequency (chronic) — NOT per-attack duration or
+peak. Independent of abortive access. Modelled as: on a preventive (access) → responder
+(Bernoulli) → annual attacks cut by a fractional reduction (responders only).
+
+| Lever | Default | Evidence |
+|---|---|---|
+| `preventive_access_fraction` | 0.30 | **[assumption]** share of CH patients on a preventive. Preventives are cheap generics (verapamil) so more accessible than abortive O₂/triptans, but bounded above by the ~10.4-yr diagnostic delay (undiagnosed → untreated) and LMIC gaps. Sensitivity 0.15–0.55. |
+| `preventive_responder_mean` | 0.42 | **[pooled]** P(responds \| on preventive). **Participant-weighted** Rusanen 2022 responder rates across the first/second-line preventives actually prescribed — verapamil 50% (n=1877), corticosteroids 55% (n=1177), lithium 31% (n=812), topiramate 25% (n=562), melatonin 25% (n=691) → weighted **0.42**. Bounds: all-conventional incl. weak agents = 0.36; verapamil+corticosteroids only = 0.52. Verapamil is first-line (Leone 2000 RCT). |
+| `preventive_responder_reduction_mean` (SD) | 0.55 (0.20) | **[definitional+measured]** "responder" ≡ ≥50% frequency reduction (trial convention), so the mean cut among responders sits somewhat above 0.50; galcanezumab (Goadsby 2019 NEJM, episodic) and verapamil trials show large reductions among responders. Clipped to [`preventive_reduction_floor` 0.50, `preventive_reduction_cap` 0.95]. |
+
+### Full Rusanen 2022 responder table (participant counts), for provenance
+**Preventives** (responder %, n): LSD 79% (86), psilocybin 69% (245), ergoline alkaloids
+61% (120), corticosteroids 55% (1177), verapamil 50% (1877), lithium 31% (812), melatonin
+25% (691), topiramate 25% (562), methysergide 24% (342), gabapentin 13% (286), valproic
+acid 13% (166), indomethacin 12% (149), amitriptyline 10% (270), propranolol 9% (343).
+**Abortives** (responder %, n): psilocybin 67% (172), oxygen 65% (3105), triptans 64%
+(3843), ergot derivatives 31% (1103), energy drinks 22% (343), lidocaine 12% (549),
+opioids 10% (822).
+
+**Psychedelics are deliberately excluded from the default responder weighting.** Their
+Rusanen rates are high but survey-based and small-n; the psilocybin RCT (Schindler 2022,
+n=14) was statistically **negative** (−3.2 attacks/wk, p=0.25) — the "~50% reduction" is an
+uncontrolled within-subject extension (n=10), and the survey "85% abort" (Sewell 2006) is
 retrospective. → Psychedelic efficacy is NOT RCT-established; treat as low-confidence.
+(They sit at the top of the range, so raising `preventive_responder_mean` toward ~0.52+
+captures a psychedelic-optimistic / first-line-only world.)
 
 ## Within-attack intensity profile — `time_at_levels()`
 Converts "minutes by *peak* intensity" into "minutes actually *spent* at each level"

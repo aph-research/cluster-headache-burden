@@ -60,6 +60,10 @@ Results are scaled to the worldwide CH population via annual prevalence.
 - **An effective abortive truncates *duration*** (it aborts the attack at the time-to-relief),
   it does **not** lower the peak — the peak (~9 min in) is typically reached before the abortive
   acts. (`treated_peak_intensity_reduction` defaults to 0.)
+- **A preventive cuts *frequency*** on a separate channel — fewer attacks per year (shorter
+  bouts / lower daily frequency), not shorter or milder individual attacks. Default responder
+  rate (0.42) is participant-weighted from the Rusanen 2022 survey (verapamil, corticosteroids,
+  lithium, topiramate, melatonin).
 - **Global scaling** uses a 1-year prevalence of 53/100,000 adults (Fischera 2007), applied to
   the adult population (~5.8B) → ≈ 3.07M sufferers in a given year.
 

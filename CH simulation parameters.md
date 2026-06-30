@@ -62,6 +62,8 @@ The notes derive a **global ~43% treated / ~57% untreated** estimate:
 
 **Important nuance — access ≠ use per attack.** Even among patients *with* access, not every attack is treated (Snoer: abortive treatment used in **84.6%** of attacks; patients often skip mild attacks and treat only when an attack ramps up). Prophylactic ("preventive") treatment is separate and more common in chronic patients.
 
+**Preventives are a separate FREQUENCY channel (now modeled).** Abortives truncate a single attack's *duration*; preventives cut *how many* attacks occur (shorter bouts / lower daily frequency). Modeled as: `preventive_access_fraction` on a preventive → `preventive_responder_mean` responder rate → responders' annual attack count cut by `preventive_responder_reduction_mean`. Default responder rate **0.42** = participant-weighted Rusanen 2022 across first/second-line preventives (verapamil 50%/n=1877, corticosteroids 55%/n=1177, lithium 31%, topiramate 25%, melatonin 25%). See `CH_simulation_sources.md` for the full table.
+
 ---
 
 ## 4. Frequency (attacks per year)

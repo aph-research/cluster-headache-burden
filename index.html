@@ -82,7 +82,10 @@ const LABELS = {
   episodic_fraction:"Episodic fraction", treatment_access_fraction:"Treatment access fraction",
   abort_prob_mean:"Abortive efficacy (mean)", treat_fraction:"Attacks treated (share)",
   placebo_abort_prob:"Self/placebo abort prob", aborted_duration_mean_min:"Aborted attack duration (min)",
-  treated_peak_intensity_reduction:"Treated peak reduction", intensity_mean:"Peak intensity mean",
+  treated_peak_intensity_reduction:"Treated peak reduction",
+  preventive_access_fraction:"Preventive access fraction", preventive_responder_mean:"Preventive responder rate",
+  preventive_responder_reduction_mean:"Responder frequency cut (mean)", preventive_responder_reduction_sd:"Responder frequency cut (SD)",
+  intensity_mean:"Peak intensity mean",
   intensity_between_sd:"Intensity between-patient SD", intensity_within_sd:"Intensity within-patient SD",
   duration_median_min:"Duration median (min)", duration_sigma:"Duration lognormal σ",
   dur_intensity_slope:"Intensity→duration coupling", profile_rise_min:"Rise to peak (min)",
@@ -93,8 +96,10 @@ const LABELS = {
 };
 const GROUPS = {
   "Population & scope":["annual_prevalence_per_100k","episodic_fraction","n_patients"],
-  "Treatment":["treatment_access_fraction","abort_prob_mean","treat_fraction","placebo_abort_prob",
+  "Treatment (abortive)":["treatment_access_fraction","abort_prob_mean","treat_fraction","placebo_abort_prob",
                "aborted_duration_mean_min","treated_peak_intensity_reduction"],
+  "Treatment (preventive)":["preventive_access_fraction","preventive_responder_mean",
+               "preventive_responder_reduction_mean","preventive_responder_reduction_sd"],
   "Intensity (per attack)":["intensity_mean","intensity_between_sd","intensity_within_sd"],
   "Duration":["duration_median_min","duration_sigma","dur_intensity_slope"],
   "Within-attack profile":["profile_rise_min","profile_decline_min"],
@@ -158,6 +163,8 @@ function draw(r){
     ["Median attacks/yr", fmt(s.attacks_per_year_median)],
     ["Mean peak intensity", s.attack_intensity_mean.toFixed(2)],
     ["% attacks aborted", s.pct_attacks_aborted.toFixed(0)+"%"],
+    ["% on preventive", s.pct_on_preventive.toFixed(0)+"%"],
+    ["Attacks averted/yr (prevent.)", fmt(s.global_attacks_averted_by_preventive)],
   ];
   $("#cards").innerHTML=cards.map(c=>`<div class="card"><div class="v">${c[1]}</div><div class="k">${c[0]}</div></div>`).join("");
   const lv=[1,2,3,4,5,6,7,8,9,10];

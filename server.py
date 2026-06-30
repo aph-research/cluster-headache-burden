@@ -36,6 +36,10 @@ SLIDERS = {
     "placebo_abort_prob":         [0.0, 0.5, 0.01],
     "aborted_duration_mean_min":  [3.0, 60.0, 1.0],
     "treated_peak_intensity_reduction": [0.0, 0.8, 0.01],
+    "preventive_access_fraction": [0.0, 1.0, 0.01],
+    "preventive_responder_mean":  [0.0, 0.95, 0.01],
+    "preventive_responder_reduction_mean": [0.5, 0.95, 0.01],
+    "preventive_responder_reduction_sd":   [0.0, 0.4, 0.01],
     "intensity_mean":             [3.0, 9.0, 0.1],
     "intensity_between_sd":       [0.0, 3.0, 0.1],
     "intensity_within_sd":        [0.0, 3.0, 0.1],
@@ -64,6 +68,9 @@ PLAUSIBLE = {
     "placebo_abort_prob":         (0.10, 0.20),   # acute-RCT placebo (suma 17, O2 20)
     "aborted_duration_mean_min":  (7.0, 20.0),    # time-to-relief: suma ~7 .. O2 ~15-20
     "treated_peak_intensity_reduction": (0.0, 0.20),  # default 0; small upside uncertainty
+    "preventive_access_fraction": (0.15, 0.55),   # cheap generics .. bounded by dx delay/LMIC gaps
+    "preventive_responder_mean":  (0.35, 0.52),   # Rusanen: all-conventional 0.36 .. verap+steroid 0.52
+    "preventive_responder_reduction_mean": (0.50, 0.70),  # responder >=50%; mean somewhat above
     "intensity_mean":             (6.3, 7.5),     # Russell-rescaled ~6.9 .. Snoer 7.0(+)
     "intensity_between_sd":       (1.0, 2.2),     # assumption; Snoer "low within" => between sizable
     "intensity_within_sd":        (0.5, 1.6),     # assumption; Snoer low within-patient variability
@@ -114,11 +121,14 @@ def _burden_by_group(res):
     groups = {
         "episodic": res.is_episodic, "chronic": ~res.is_episodic,
         "with access": res.has_access, "no access": ~res.has_access,
+        "on preventive": res.on_preventive, "no preventive": ~res.on_preventive,
     }
     a_ep = res.is_episodic[res.patient_idx]
     a_acc = res.has_access[res.patient_idx]
+    a_prev = res.on_preventive[res.patient_idx]
     amasks = {"episodic": a_ep, "chronic": ~a_ep,
-              "with access": a_acc, "no access": ~a_acc}
+              "with access": a_acc, "no access": ~a_acc,
+              "on preventive": a_prev, "no preventive": ~a_prev}
     return {
         "hours": {g: (float(pat_hours[m].mean()) if m.any() else None)
                   for g, m in groups.items()},
