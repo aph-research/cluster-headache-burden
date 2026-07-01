@@ -49,7 +49,7 @@ Results are scaled to the worldwide CH population via annual prevalence.
 **Key modelling decisions** (full reasoning and citations in
 [`CH_simulation_sources.md`](CH_simulation_sources.md)):
 
-- **Patients are stratified** by subtype (episodic ≈ 80% / chronic ≈ 20%) and by a *continuous*
+- **Patients are stratified** by subtype (episodic ≈ 85% / chronic ≈ 15%) and by a *continuous*
   treatment-efficacy parameter — not a hard treated/untreated binary.
 - **Intensity is a two-level model.** Each patient has a latent severity (between-patient
   variation); their individual attacks vary around it (within-patient variation). Aggregated
@@ -173,7 +173,7 @@ python3 validate.py 1000 7     # cohort size, seed
 - **Physical plausibility** — per-patient outlier scan: nobody in attack more than the whole
   year (a denominator-free impossibility check), nobody >24 h/active-day, attacks/active-day
   respects the ICHD ≤8 ceiling (with a rounding tolerance), nobody pinned to the safety cap.
-- **Realism** — population aggregates vs the literature (% episodic ≈80%, mean peak ≈7, median
+- **Realism** — population aggregates vs the literature (% episodic ≈85%, mean peak ≈7, median
   duration ≈30–45 min, episodic < chronic frequency, right-skewed distributions, ~3M sufferers).
   These are WARNs, not failures, since they legitimately shift as you move the levers.
 

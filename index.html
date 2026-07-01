@@ -52,11 +52,18 @@
             padding:2px 8px; border:1px solid var(--line); border-radius:10px;
             vertical-align:middle; }
   button { background:var(--accv); color:#fff; border:0; border-radius:6px;
-           padding:6px 10px; cursor:pointer; font-size:12px; margin-top:6px; }
+           padding:7px 12px; cursor:pointer; font-size:12px; line-height:1.2; }
   button.sec { background:#2a2f3a; }
   select { background:var(--bg); color:var(--ink); border:1px solid var(--line);
-           border-radius:6px; padding:5px 8px; font:inherit; cursor:pointer; }
+           border-radius:6px; padding:7px 8px; font:inherit; font-size:12px;
+           line-height:1.2; cursor:pointer; }
   select:focus { outline:none; border-color:var(--accv); }
+  .actions { display:flex; flex-direction:column; gap:8px; margin-top:16px; }
+  .actions button { width:100%; }
+  .tiptip { position:fixed; display:none; max-width:300px; z-index:9999;
+            background:#0b0d11; color:var(--ink); border:1px solid var(--line);
+            border-radius:6px; padding:9px 11px; font-size:11px; font-weight:400;
+            line-height:1.55; box-shadow:0 6px 22px rgba(0,0,0,.6); pointer-events:none; }
 </style>
 </head>
 <body>
@@ -77,16 +84,22 @@
       <div class="chart" id="c_group"></div>
     </div>
 
-    <h2 class="sec-h">Cost-effectiveness <span id="ceStatus" class="status"></span></h2>
+    <h2 class="sec-h">Cost-effectiveness <span id="ceStatus" style="font-size:11px;font-weight:400;color:var(--mut);margin-left:6px"></span></h2>
     <div class="chart full" id="cePanel" style="min-height:0;padding:12px 14px">
-      <div style="display:flex;gap:20px;align-items:flex-end;flex-wrap:wrap;font-size:12px">
-        <label>Annual budget ($)<br><input id="ce_budget" type="number" value="250000" step="1000" style="width:120px"></label>
-        <label>Patients reached / yr<br><input id="ce_reached" type="number" value="500" step="10" style="width:110px"></label>
-        <div style="min-width:230px">
-          <label style="display:flex;justify-content:space-between;align-items:center">
-            <span>Avg effect size <span class="info" title="On average, how much of the maximum possible benefit your beneficiaries actually get. The maximum (effect size = 1) is a patient going from no treatment at all to fully effective treatment. Real programs land below that: some people get treated for the first time, others just trade an okay treatment for a better one, and some would have improved anyway. An effect size of 0.6 means beneficiaries capture, on average, 60% of that full benefit, and only the average matters for the totals. The estimate assumes beneficiaries gain both acute (attack-stopping) and preventive treatment, and that they match the simulated mix of episodic and chronic patients. All the simulation levers on the left feed into these numbers.">ⓘ</span></span>
+      <div style="display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap;font-size:12px">
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <span>Annual budget ($)</span>
+          <input id="ce_budget" type="number" value="250000" step="1000" style="width:120px">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <span>Patients reached / yr</span>
+          <input id="ce_reached" type="number" value="500" step="10" style="width:120px">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;min-width:240px;flex:1;max-width:320px">
+          <span style="display:flex;justify-content:space-between;align-items:center">
+            <span>Avg effect size <span class="info" data-tip="On average, how much of the maximum possible benefit your beneficiaries actually get. The maximum (effect size = 1) is a patient going from no treatment at all to fully effective treatment. Real programs land below that: some people get treated for the first time, others just trade an okay treatment for a better one, and some would have improved anyway. An effect size of 0.6 means beneficiaries capture, on average, 60% of that full benefit, and only the average matters for the totals. The estimate assumes beneficiaries gain both acute (attack-stopping) and preventive treatment, and that they match the simulated mix of episodic and chronic patients. All the simulation levers on the left feed into these numbers.">ⓘ</span></span>
             <b id="ce_eff_lab" style="color:var(--accv)">0.60</b>
-          </label>
+          </span>
           <input id="ce_eff" type="range" min="0" max="1" step="0.01" value="0.6" style="width:100%">
         </div>
       </div>
@@ -112,9 +125,9 @@
 </div>
 <script>
 const LABELS = {
-  episodic_fraction:"Episodic fraction", treatment_access_fraction:"Treatment access fraction",
+  episodic_fraction:"Episodic fraction", treatment_access_fraction:"Abortive access fraction",
   abort_prob_mean:"Abortive efficacy (mean)", treat_fraction:"Attacks treated (share)",
-  placebo_abort_prob:"Self/placebo abort prob", aborted_duration_mean_min:"Aborted attack duration (min)",
+  aborted_duration_mean_min:"Aborted attack duration (min)",
   treated_peak_intensity_reduction:"Treated peak reduction",
   preventive_access_fraction:"Preventive access fraction", preventive_responder_mean:"Preventive responder rate",
   preventive_responder_reduction_mean:"Responder frequency cut (mean)", preventive_responder_reduction_sd:"Responder frequency cut (SD)",
@@ -134,14 +147,13 @@ const TIPS = {
   treatment_access_fraction:"Share of sufferers worldwide who can actually get an effective acute treatment, i.e. a drug like oxygen or a triptan that stops an attack already underway. Built up from rich (~55%), middle (~12%) and low-income (~3%) countries, population-weighted to ~0.18 (Rossi 2020; WHO).",
   abort_prob_mean:"For someone who has the acute (attack-stopping) treatment, the average chance it actually works on an attack. Pooled from a large patient survey (Rusanen 2022): oxygen 65%, triptans 64% → ~0.64.",
   treat_fraction:"Of all the attacks a patient with access has, the share they actually bother to treat. Around 85%; the mildest attacks are often left alone (Snoer).",
-  placebo_abort_prob:"Chance an attack ends quickly on its own, with no effective treatment. From the placebo arms of trials, ~17–20% were pain-free within 15 minutes.",
   aborted_duration_mean_min:"How long an attack lasts when the acute treatment successfully stops it (minutes from onset to pain-free). Injected sumatriptan acts within minutes; oxygen leaves ~78% pain-free by 15 min (Cohen 2009).",
   treated_peak_intensity_reduction:"How much the acute treatment lowers an attack's worst (peak) pain. Default 0: the peak is reached (~9 min in) before the drug kicks in, so treated and untreated peaks are about equal (Snoer 2019).",
   preventive_access_fraction:"Share of sufferers on an effective preventive, i.e. a daily medication (e.g. verapamil) that reduces how often attacks happen. Built up the same way as acute access; cheap generics help, but long diagnostic delays hold it to ~0.23.",
   preventive_responder_mean:"For someone taking a preventive, the average chance it meaningfully helps them. Pooled from a patient survey (Rusanen 2022): verapamil 50%, steroids 55%, lithium 31%, others ~25% → ~0.42.",
   preventive_responder_reduction_mean:"For the people a preventive helps, the average drop in how many attacks they get. Someone counts as 'helped' only if attacks fall by at least half, so the average drop is a bit above 50% (verapamil and antibody trials).",
   preventive_responder_reduction_sd:"How much that attack-reduction varies from person to person among those the preventive helps. Values are kept between 50% and 95%.",
-  intensity_mean:"Average worst-pain rating of an attack on a 1–10 scale. Diary studies where patients rate attacks as they happen give ~7 (Snoer), not the scarier '9.7/10' figure, which is people recalling their worst-ever attack.",
+  intensity_mean:"Average worst-pain rating of an attack on a 1–10 scale. Diary studies where patients rate attacks as they happen give ~7 (Snoer), not the commonly-cited '9.7/10' figure, which is people evaluating CH pain generally.",
   intensity_between_sd:"How much patients differ from one another in their typical attack pain. Set larger than the within-patient spread below, because studies suggest most variation is between people, not within one person (Snoer).",
   intensity_within_sd:"How much a single patient's own attacks vary in pain around their personal average. Kept small, since one person's attacks tend to be fairly similar to each other.",
   duration_median_min:"Typical length of an untreated attack, in minutes (half last longer, half shorter). Diary data give a mean ~39 min; the diagnostic definition allows 15–180 min.",
@@ -156,7 +168,7 @@ const TIPS = {
 };
 const GROUPS = {
   "Population & scope":["annual_prevalence_per_100k","episodic_fraction","n_patients"],
-  "Treatment (abortive)":["treatment_access_fraction","abort_prob_mean","treat_fraction","placebo_abort_prob",
+  "Treatment (abortive)":["treatment_access_fraction","abort_prob_mean","treat_fraction",
                "aborted_duration_mean_min","treated_peak_intensity_reduction"],
   "Treatment (preventive)":["preventive_access_fraction","preventive_responder_mean",
                "preventive_responder_reduction_mean","preventive_responder_reduction_sd"],
@@ -185,7 +197,7 @@ async function init(){
       const [mn,mx,st]=SL[k]; const v=DEF[k]; state[k]=v;
       const el=document.createElement("div"); el.className="lever";
       const tip=(TIPS[k]||"").replace(/"/g,"&quot;");
-      el.innerHTML=`<label><span>${LABELS[k]||k}${tip?` <span class="info" title="${tip}">ⓘ</span>`:""}</span> <b id="lab_${k}">${v}</b></label>
+      el.innerHTML=`<label><span>${LABELS[k]||k}${tip?` <span class="info" data-tip="${tip}">ⓘ</span>`:""}</span> <b id="lab_${k}">${v}</b></label>
         <input type="range" id="in_${k}" min="${mn}" max="${mx}" step="${st}" value="${v}">`;
       d.appendChild(el);
       el.querySelector("input").addEventListener("input",e=>{
@@ -200,14 +212,16 @@ async function init(){
       runCE();
     });
   });
+  const actions=document.createElement("div"); actions.className="actions";
   const exp=document.createElement("button"); exp.textContent="⬇ Export CSV (3035 patients)";
   exp.title="Everything the cost-effectiveness spreadsheet needs: per untreated patient, baseline + 'with access' attacks (abortive / preventive / both) with averted attacks/time/severe/DLES";
   exp.onclick=()=>{ const qs=Object.entries(state).map(([k,v])=>`${k}=${v}`).join("&");
     window.location.href="/api/export_counterfactual?"+qs+"&n_export=3035"; };
-  p.appendChild(exp);
+  actions.appendChild(exp);
   const reset=document.createElement("button"); reset.textContent="Reset defaults"; reset.className="sec";
   reset.onclick=()=>{for(const k in state){state[k]=DEF[k]; const i=$("#in_"+k); if(i){i.value=DEF[k]; $("#lab_"+k).textContent=DEF[k];}} run();};
-  p.appendChild(reset);
+  actions.appendChild(reset);
+  p.appendChild(actions);
   run();
 }
 let timer=null;
@@ -235,7 +249,7 @@ async function runCE(){
     ["$ / attack averted", money(r.cost_per_attack)],
     ["Attacks averted / yr", fmt(r.attacks_averted)],
     ["$ / severe attack averted", money(r.cost_per_severe_attack)],
-    ["Severe (≥9) averted / yr", fmt(r.severe_attacks_averted)],
+    ["Severe (≥9/10) attacks averted / yr", fmt(r.severe_attacks_averted)],
   ];
   $("#ceCards").innerHTML=cards.map(c=>`<div class="card"><div class="v">${c[1]}</div><div class="k">${c[0]}</div></div>`).join("");
   $("#ceStatus").textContent="";
@@ -251,23 +265,20 @@ function draw(r){
     ["Mean attacks/yr", fmt(s.attacks_per_year_mean)],
     ["Median attacks/yr", fmt(s.attacks_per_year_median)],
     ["Mean peak intensity", s.attack_intensity_mean.toFixed(2)],
-    ["% attacks aborted", s.pct_attacks_aborted.toFixed(0)+"%"],
-    ["% on preventive", s.pct_on_preventive.toFixed(0)+"%"],
-    ["Attacks averted/yr (prevent.)", fmt(s.global_attacks_averted_by_preventive)],
   ];
   $("#cards").innerHTML=cards.map(c=>`<div class="card"><div class="v">${c[1]}</div><div class="k">${c[0]}</div></div>`).join("");
   const lv=[1,2,3,4,5,6,7,8,9,10];
   Plotly.react("c_peak",[{x:lv,y:r.by_peak,type:"bar",marker:{color:"#4F2AC4"}}],
-    {...dark,title:"Attacks/yr by PEAK intensity",xaxis:{title:"peak NRS",dtick:1},yaxis:{title:"attacks/yr"}},{displayModeBar:false});
+    {...dark,title:"Attacks/yr by PEAK intensity",xaxis:{title:"peak NRS",dtick:1},yaxis:{title:"attacks/yr",hoverformat:",.0f"}},{displayModeBar:false});
   const py=r.time_at_levels.map(m=>m/60/24/365);
   Plotly.react("c_level",[{x:lv,y:py,type:"bar",marker:{color:"#F85604"}}],
-    {...dark,title:"Person-years/yr spent AT each intensity",xaxis:{title:"NRS",dtick:1},yaxis:{title:"person-years"}},
+    {...dark,title:"Person-years/yr spent AT each intensity",xaxis:{title:"NRS",dtick:1},yaxis:{title:"person-years",hoverformat:",.1f"}},
     {displayModeBar:false});
   Plotly.react("c_tail",[{x:r.attacks_hist.centers,y:r.attacks_hist.counts,type:"bar",marker:{color:"#4aa3ff"}}],
-    {...dark,title:"Attacks/yr per patient (long tail)",xaxis:{title:"attacks/yr",type:"log"},yaxis:{title:"# patients"}},{displayModeBar:false});
+    {...dark,title:"Attacks/yr per patient (long tail)",xaxis:{title:"attacks/yr",type:"log",hoverformat:",.1f"},yaxis:{title:"# patients",hoverformat:",.0f"}},{displayModeBar:false});
   const g=r.burden_by_group.hours;
   Plotly.react("c_group",[{x:Object.keys(g),y:Object.values(g),type:"bar",marker:{color:"#37c98b"}}],
-    {...dark,title:"Mean hours/yr in attack per patient, by group",yaxis:{title:"hours/yr"}},{displayModeBar:false});
+    {...dark,title:"Mean hours/yr in attack per patient, by group",yaxis:{title:"hours/yr",hoverformat:",.1f"}},{displayModeBar:false});
 }
 // ---- sensitivity / tornado ----
 document.addEventListener("click", e=>{ if(e.target && e.target.id==="sensBtn") runSensitivity(); });
@@ -307,6 +318,22 @@ function drawTornado(r){
               line:{color:"#9aa3b2", width:1, dash:"dot"}}]},
     {displayModeBar:false});
 }
+// ---- custom tooltips (native title is slow/invisible in some browsers) ----
+const tipEl=document.createElement("div"); tipEl.className="tiptip"; document.body.appendChild(tipEl);
+function positionTip(t){
+  const r=t.getBoundingClientRect();
+  const tw=tipEl.offsetWidth, th=tipEl.offsetHeight, pad=8;
+  let left=Math.min(r.left, window.innerWidth-tw-pad); left=Math.max(pad,left);
+  let top=r.bottom+6; if(top+th>window.innerHeight-pad) top=Math.max(pad, r.top-th-6);
+  tipEl.style.left=left+"px"; tipEl.style.top=top+"px";
+}
+document.addEventListener("mouseover",e=>{
+  const t=e.target.closest("[data-tip]"); if(!t) return;
+  tipEl.textContent=t.getAttribute("data-tip"); tipEl.style.display="block"; positionTip(t);
+});
+document.addEventListener("mouseout",e=>{
+  if(e.target.closest("[data-tip]")) tipEl.style.display="none";
+});
 init();
 </script>
 </body>

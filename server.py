@@ -33,7 +33,6 @@ SLIDERS = {
     "treatment_access_fraction":  [0.0, 1.0, 0.01],
     "abort_prob_mean":            [0.0, 0.95, 0.01],
     "treat_fraction":             [0.0, 1.0, 0.01],
-    "placebo_abort_prob":         [0.0, 0.5, 0.01],
     "aborted_duration_mean_min":  [3.0, 60.0, 1.0],
     "treated_peak_intensity_reduction": [0.0, 0.8, 0.01],
     "preventive_access_fraction": [0.0, 1.0, 0.01],
@@ -65,7 +64,6 @@ PLAUSIBLE = {
     "treatment_access_fraction":  (0.10, 0.30),   # global-access research range
     "abort_prob_mean":            (0.50, 0.78),   # responder: O2 65 / triptan 64 / SC suma 78
     "treat_fraction":             (0.70, 0.95),   # Snoer ~85%
-    "placebo_abort_prob":         (0.10, 0.20),   # acute-RCT placebo (suma 17, O2 20)
     "aborted_duration_mean_min":  (7.0, 20.0),    # time-to-relief: suma ~7 .. O2 ~15-20
     "treated_peak_intensity_reduction": (0.0, 0.20),  # default 0; small upside uncertainty
     "preventive_access_fraction": (0.15, 0.55),   # cheap generics .. bounded by dx delay/LMIC gaps

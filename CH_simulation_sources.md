@@ -12,7 +12,7 @@ a central tendency), **[pooled]** (meta-analysis/review), or **[assumption]**
 |---|---|---|
 | `annual_prevalence_per_100k` | 53 | **[pooled]** Fischera 2007 meta-analysis, 1-yr prevalence 53/100k (95% CI 26–95), for **adults of all ages, both sexes**. Lifetime 124/100k (0.12%). |
 | `adult_population` | 5.8e9 | **[derived]** 53/100k is an ADULT (18+) prevalence, so it must be applied to the adult population (~72% of 8.1B), NOT the full world population. → **~3.07M** sufferers/yr (this falls out of prevalence × adult population; not tuned to any prior figure). |
-| `episodic_fraction` | 0.80 | **[measured/cited]** ~80–90% episodic (Wei 2018 review; Vikelis 2016 cohort 77.5%). Fischera eCH:cCH ≈ 6:1. Clinic samples oversample chronic (selection bias). |
+| `episodic_fraction` | 0.85 | **[measured/cited]** ~80–90% episodic (Wei 2018 review; Vikelis 2016 cohort 77.5%). Fischera eCH:cCH ≈ 6:1 (~0.86). 0.85 sits mid-range; clinic samples oversample chronic (selection bias). |
 
 ## Frequency
 ICHD-3 criterion D: **1 every other day to 8/day [definitional]** — a ceiling, *not* typical.
@@ -31,7 +31,7 @@ ICHD-3: **15–180 min [definitional]**.
 | Lever | Default | Evidence |
 |---|---|---|
 | `duration_median_min` | 45 | **[measured]** prospective mean 39.3 min (Hagedorn 2019, 4,600 attacks, n=1 patient). 825-pt cohort (Göbel 2021): mode 30, 54% in 15–60, ~90% within 15–180, mean 123 (recall-inflated, skewed). |
-| `duration_sigma` | 0.70 | **[assumption]** lognormal shape giving right tail to ~180+. |
+| `duration_sigma` | 0.70 | **[assumption]** lognormal shape giving right tail to ~180+. Also fixes the SHORT tail: with median 45 this yields mode ≈28 min, ~6% of attacks under 15 min, ~60% in 15–60, ~92% in 15–180, matching Göbel 2021 (mode 30; 54% / 90%). **Naturally short attacks are modelled here, in the intrinsic duration distribution; there is deliberately NO separate "self-abort"/placebo mechanism** (placebo response is not established in CH, so a short attack is simply a low draw from this distribution). Only an effective abortive truncates duration further (see Treatment). |
 | `dur_intensity_slope` | 0.08 | **[assumption, lit-supported]** factor = 1 + slope·(intensity − mean), CENTERED on the population mean so median duration stays calibrated; clipped [0.3, 2.5]. Russell 1981 found a positive intensity↔duration correlation; Hagedorn implies slope ~0.1 but is n=1 over a narrow range, so default is gentler (0.08). **slope=0 ⇒ no coupling — vary in sensitivity.** (Earlier 0.106/0.58 form was Hagedorn-centered at intensity 3.6, which inflated durations ~32% at our mean of 7 — fixed.) |
 | Retrospective overstates duration | — | **[measured]** Snoer 2019: untreated attacks rated significantly longer retrospectively than in diaries. |
 
@@ -55,7 +55,6 @@ Hence `treated_peak_intensity_reduction` defaults to 0.
 | `treatment_access_fraction` | 0.18 | **[measured HIC + inferred LMIC]** Global fraction with real access to an effective abortive. Independent estimate **~0.18** (sensitivity range 0.10–0.30): HIC ~0.55 (Rossi 2020: EU 47% unrestricted, 63–66% reimbursed; Evers & Rapoport 2017: O₂ reimbursed in 50% of mostly-HIC countries), MIC ~0.12, LIC ~0.03, pop-weighted (~85% LMIC). Bounded above by WHO neurological treatment-gap data (>50% MIC, >75% LIC) + low LMIC triptan consumption + pooled 10.4-yr diagnostic delay (J Headache Pain 2025). Only the HIC input is measured; LMIC values are inferences. **First lever to vary in sensitivity.** |
 | `abort_prob_mean` (SD) | 0.64 (0.22) | **[pooled]** participant-weighted responder rate across the two abortives that constitute "access" (Rusanen 2022): **oxygen 65% (n=3105)** and **triptans 64% (n=3843)** → weighted **0.644**. (Other Rusanen abortives, for reference: psilocybin 67% n=172, ergot 31% n=1103, energy drinks 22% n=343, lidocaine 12% n=549, opioids 10% n=822 — these are not the "access" channel.) SD spans the individual range. |
 | `treat_fraction` | 0.85 | **[measured]** ~85% of attacks treated even with access; mild ones skipped (Snoer). |
-| `placebo_abort_prob` | 0.18 | **[measured]** acute-RCT placebo pain-free at 15 min: SC suma 17% (Cochrane), oxygen 20% (Cohen 2009). |
 | `aborted_duration_mean_min` (SD) | 15 (6) | **[measured]** time-to-pain-free: SC sumatriptan ~7 min lag then seconds (Hardebo 1993); oxygen 78% pain-free by 15 min (Cohen 2009 JAMA, vs 20% air). |
 | `treated_peak_intensity_reduction` | 0.0 | **[measured-justified]** see above; lever if you want to model a peak effect. |
 

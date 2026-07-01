@@ -53,7 +53,7 @@ class Config:
     seed: int = 0
 
     # ---- Subtype split ---------------------------------------------------- #
-    episodic_fraction: float = 0.80               # Schindler&Burish; Fischera 6:1
+    episodic_fraction: float = 0.85               # Schindler&Burish; Fischera 6:1; ~80-90% episodic
 
     # ---- Treatment: access (patient-level) -------------------------------- #
     # Global fraction with real access to an effective abortive (O2 / SC-nasal
@@ -67,7 +67,6 @@ class Config:
     abort_prob_mean: float = 0.64                 # O2+triptan participant-weighted (Rusanen 2022)
     abort_prob_sd: float = 0.22
     treat_fraction: float = 0.85                  # share of attacks actually treated (Snoer)
-    placebo_abort_prob: float = 0.18              # self/placebo abort (Cohen, suma RCTs)
 
     # ---- Treatment: effect magnitudes ------------------------------------- #
     aborted_duration_mean_min: float = 15.0       # time-to-relief (suma ~7-10, O2 by 15)
@@ -384,9 +383,11 @@ def simulate(cfg: Config | None = None, **overrides) -> SimulationResult:
     duration = np.clip(base * factor, cfg.duration_floor_min, cfg.duration_cap_min)
 
     # ---- treatment: abort some attacks ----------------------------------- #
+    # Only an effective abortive truncates an attack. Naturally short attacks are
+    # NOT modelled here -- they already fall out of the intrinsic (untreated)
+    # duration distribution above, which is calibrated to the literature.
     treated = has_access[patient_idx] & (rng.random(total) < cfg.treat_fraction)
-    roll = rng.random(total)
-    aborted = np.where(treated, roll < efficacy[patient_idx], roll < cfg.placebo_abort_prob)
+    aborted = treated & (rng.random(total) < efficacy[patient_idx])
 
     abort_dur = np.clip(
         rng.normal(cfg.aborted_duration_mean_min, cfg.aborted_duration_sd_min, total),

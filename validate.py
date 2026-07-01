@@ -235,7 +235,7 @@ def check_realism(res, cfg, rep: Report):
     ep = res.is_episodic
     untreated_dur = res.duration[~res.aborted]
 
-    rep.range("REALISM", "% episodic ~80%", s["pct_episodic"], 75.0, 90.0, "{:.1f}")
+    rep.range("REALISM", "% episodic ~85%", s["pct_episodic"], 75.0, 90.0, "{:.1f}")
     rep.range("REALISM", "mean peak intensity ~7", s["attack_intensity_mean"],
               6.5, 7.5, "{:.2f}")
     rep.range("REALISM", "median attack duration 25-60 min",
