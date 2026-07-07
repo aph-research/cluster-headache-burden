@@ -1,0 +1,217 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cost-effectiveness layout comparison</title>
+<style>
+  :root { --bg:#0f1115; --panel:#181b22; --ink:#e6e8ec; --mut:#9aa3b2;
+          --accv:#4F2AC4; --acco:#F85604; --line:#2a2f3a; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font:14px/1.5 system-ui,Segoe UI,Roboto,sans-serif;
+         background:var(--bg); color:var(--ink); }
+  h1 { font-size:18px; margin:0 0 4px; }
+  h1+p { margin:0 0 22px; color:var(--mut); font-size:12px; }
+  .variant { border:1px solid var(--line); border-radius:10px; padding:16px 18px;
+             margin-bottom:26px; background:#12151b; }
+  .variant > h3 { margin:0 0 2px; font-size:14px; }
+  .variant > h3 span { color:var(--mut); font-weight:400; font-size:11px; margin-left:8px; }
+  .fld { display:flex; flex-direction:column; gap:5px; font-size:12px; min-width:190px; }
+  .fld > span { color:var(--ink); }
+  .rng { display:flex; align-items:center; gap:6px; color:var(--mut); }
+  input[type=number] { background:var(--bg); color:var(--ink); border:1px solid var(--line);
+                       border-radius:6px; padding:5px 7px; width:110px; font:inherit; }
+  .rng input[type=number] { width:70px; }
+  input[type=range] { accent-color:var(--accv); width:100%; }
+  input[type=number]:focus { outline:none; border-color:var(--accv); }
+  input:disabled { opacity:.4; }
+  .info { color:var(--mut); cursor:help; font-size:11px; font-style:normal; opacity:.7; }
+  .info:hover { opacity:1; }
+  b { color:var(--accv); font-variant-numeric:tabular-nums; }
+  .row { display:flex; gap:22px 26px; flex-wrap:wrap; align-items:flex-start; }
+  .implied { margin-top:12px; font-size:12px; color:var(--mut); min-height:16px; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+           gap:8px; margin-top:14px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px 12px; }
+  .card .v { font-size:20px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .card .sub { color:var(--mut); font-size:10px; opacity:.7; }
+  .card .k { color:var(--mut); font-size:11px; margin-top:2px; }
+  /* variant 1: segmented toggle */
+  .seg { display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; margin:12px 0; }
+  .seg button { background:transparent; color:var(--mut); border:0; padding:7px 16px;
+                font:inherit; cursor:pointer; }
+  .seg button.active { background:var(--accv); color:#fff; }
+  /* variant 2: radio cards */
+  .modecard { flex:1; min-width:240px; border:1px solid var(--line); border-radius:10px;
+              padding:12px 14px; cursor:pointer; transition:.15s; }
+  .modecard.active { border-color:var(--accv); box-shadow:0 0 0 1px var(--accv) inset; }
+  .modecard.inactive { opacity:.5; }
+  .modecard > .hd { display:flex; align-items:center; gap:8px; font-weight:600; margin-bottom:10px; }
+  .modecard .row { gap:12px; }
+  /* variant 3: radio + collapsible */
+  .opt { border-top:1px solid var(--line); padding:12px 0; }
+  .opt > label { display:flex; align-items:center; gap:8px; font-weight:600; cursor:pointer; }
+  .opt .body { margin:12px 0 0 24px; }
+  .opt.collapsed .body { display:none; }
+</style>
+
+<h1>Cost-effectiveness · layout comparison</h1>
+<p>Three ways to expose the two modeling modes (simple point estimates vs. the metrics funnel). All are live against the real endpoints. Budget is shared by both modes in every variant. Pick one and I'll bake it into index.html.</p>
+
+<div class="variant" id="v1">
+  <h3>1 · Segmented toggle <span>one input set visible at a time; cleanest, most compact</span></h3>
+  <div class="row"><div class="fld"><span>Annual budget ($)</span><input id="v1_budget" type="number" value="100000" step="1000"></div></div>
+  <div class="seg" id="v1_seg">
+    <button data-mode="simple" class="active">Simple</button>
+    <button data-mode="funnel">From metrics ▸</button>
+  </div>
+  <div class="row" id="v1_inputs"></div>
+  <div class="implied" id="v1_implied"></div>
+  <div class="cards" id="v1_cards"></div>
+</div>
+
+<div class="variant" id="v2">
+  <h3>2 · Two radio cards <span>both parameterizations visible side by side; inactive dimmed</span></h3>
+  <div class="row"><div class="fld"><span>Annual budget ($)</span><input id="v2_budget" type="number" value="100000" step="1000"></div></div>
+  <div class="row" style="margin-top:12px;align-items:stretch">
+    <label class="modecard active" id="v2_card_simple">
+      <div class="hd"><input type="radio" name="v2mode" value="simple" checked> Simple</div>
+      <div class="row" id="v2_simple"></div>
+    </label>
+    <label class="modecard inactive" id="v2_card_funnel">
+      <div class="hd"><input type="radio" name="v2mode" value="funnel"> From metrics (funnel)</div>
+      <div class="row" id="v2_funnel"></div>
+    </label>
+  </div>
+  <div class="implied" id="v2_implied"></div>
+  <div class="cards" id="v2_cards"></div>
+</div>
+
+<div class="variant" id="v3">
+  <h3>3 · Radio + collapsible <span>chosen mode expands inline, the other collapses to a line</span></h3>
+  <div class="row"><div class="fld"><span>Annual budget ($)</span><input id="v3_budget" type="number" value="100000" step="1000"></div></div>
+  <div class="opt" id="v3_opt_simple">
+    <label><input type="radio" name="v3mode" value="simple" checked> Simple</label>
+    <div class="body row" id="v3_simple"></div>
+  </div>
+  <div class="opt collapsed" id="v3_opt_funnel">
+    <label><input type="radio" name="v3mode" value="funnel"> From metrics (funnel)</label>
+    <div class="body row" id="v3_funnel"></div>
+  </div>
+  <div class="implied" id="v3_implied"></div>
+  <div class="cards" id="v3_cards"></div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+const FUNNEL=[
+  {k:"patient_fraction",label:"P(patient | visitor)",lo:0.45,hi:0.70,step:0.01,
+   tip:"Share of visitors who are actual CH patients. Anchor with PostHog referrer mix and survey self-ID."},
+  {k:"engaged_fraction",label:"P(engaged | patient)",lo:0.25,hi:0.50,step:0.01,
+   tip:"Share of patient-visitors who genuinely engage: scroll, dwell, guide-open, chapter completion (PostHog)."},
+  {k:"adoption_fraction",label:"P(adopts | engaged)",lo:0.05,hi:0.20,step:0.01,
+   tip:"Share of engaged patients who actually try a treatment. Not observable from behavior; pin with an opt-in follow-up cohort. Dominates uncertainty."},
+  {k:"additionality",label:"Additionality",lo:0.30,hi:0.70,step:0.01,
+   tip:"Counterfactual credit from survey Q3. Lives in effect size, not reach, to avoid double-counting."},
+  {k:"clinical_capture",label:"Clinical capture",lo:0.50,hi:0.85,step:0.01,
+   tip:"Realized share of the full benefit adopters get (survey Q7-Q9)."},
+];
+function fmt(x){ if(x==null||!isFinite(x)) return "–"; const a=Math.abs(x);
+  if(a>=1e6) return (x/1e6).toFixed(2)+"M"; if(a>=1e4) return (x/1e3).toFixed(1)+"k";
+  if(a>=100) return Math.round(x).toLocaleString(); if(a>=10) return x.toFixed(1); return x.toFixed(2); }
+const money=x=> x==null?"–":"$"+fmt(x);
+async function api(endpoint, params){
+  const qs=Object.entries(params).map(([k,v])=>`${k}=${encodeURIComponent(v)}`).join("&");
+  const r=await fetch(`api/${endpoint}?${qs}`); const j=await r.json();
+  if(j.error) throw new Error(j.error); return j;
+}
+function simpleHTML(v){ return `
+  <div class="fld"><span>Patients reached / yr</span><input id="${v}_reached" type="number" value="500" step="10"></div>
+  <div class="fld"><span>Avg effect size <i class="info" title="Average share of the full no-treatment→full-access benefit each beneficiary captures.">ⓘ</i> <b id="${v}_efflab">0.60</b></span>
+    <input id="${v}_eff" type="range" min="0" max="1" step="0.01" value="0.6"></div>`; }
+function funnelHTML(v){ return `
+  <div class="fld"><span>Annual unique visitors <i class="info" title="Annualized uniques from PostHog, not cumulative to date.">ⓘ</i></span>
+    <input id="${v}_visitors" type="number" value="8000" step="500"></div>`
+  + FUNNEL.map(f=>`
+  <div class="fld"><span>${f.label} <i class="info" title="${f.tip.replace(/"/g,"'")}">ⓘ</i></span>
+    <span class="rng"><input id="${v}_${f.k}_lo" type="number" value="${f.lo}" step="${f.step}"> – <input id="${v}_${f.k}_hi" type="number" value="${f.hi}" step="${f.step}"></span>
+  </div>`).join(""); }
+
+function renderPoint(v, r){
+  const c=[["$ / DLES averted",money(r.cost_per_dles)],["DLES averted / yr",fmt(r.dles_averted)],
+    ["$ / attack-hour averted",money(r.cost_per_attack_hour)],["Attack-hours averted / yr",fmt(r.attack_hours_averted)],
+    ["$ / severe attack averted",money(r.cost_per_severe_attack)],["Severe (≥9/10) averted / yr",fmt(r.severe_attacks_averted)]];
+  $("#"+v+"_cards").innerHTML=c.map(x=>`<div class="card"><div class="v">${x[1]}</div><div class="k">${x[0]}</div></div>`).join("");
+  $("#"+v+"_implied").innerHTML="";
+}
+function renderBanded(v, r){
+  const band=b=>`${fmt(b.p10)} – ${fmt(b.p90)}`, moneyBand=b=>`${money(b.p90)} – ${money(b.p10)}`;
+  const cell=(m,s)=>`<div class="v">${m}</div><div class="sub">p10–p90: ${s}</div>`;
+  const c=[["$ / DLES averted",money(r.cost_per_dles.p50),moneyBand(r.cost_per_dles)],
+    ["DLES averted / yr",fmt(r.dles_averted.p50),band(r.dles_averted)],
+    ["$ / attack-hour averted",money(r.cost_per_attack_hour.p50),moneyBand(r.cost_per_attack_hour)],
+    ["Attack-hours averted / yr",fmt(r.attack_hours_averted.p50),band(r.attack_hours_averted)],
+    ["$ / severe attack averted",money(r.cost_per_severe_attack.p50),moneyBand(r.cost_per_severe_attack)],
+    ["Severe (≥9/10) averted / yr",fmt(r.severe_attacks_averted.p50),band(r.severe_attacks_averted)]];
+  $("#"+v+"_cards").innerHTML=c.map(x=>`<div class="card">${cell(x[1],x[2])}<div class="k">${x[0]}</div></div>`).join("");
+  const pr=r.patients_reached, ef=r.effect_size_mean;
+  $("#"+v+"_implied").innerHTML=`Implied <b>patients reached/yr</b>: ${fmt(pr.p50)} <span style="opacity:.7">(${fmt(pr.p10)}–${fmt(pr.p90)})</span>`
+    +` &nbsp;·&nbsp; <b>avg effect size</b>: ${ef.p50.toFixed(2)} <span style="opacity:.7">(${ef.p10.toFixed(2)}–${ef.p90.toFixed(2)})</span>`
+    +` &nbsp;·&nbsp; <span style="opacity:.7">${r.n_mc.toLocaleString()} draws</span>`;
+}
+const modes={v1:"simple",v2:"simple",v3:"simple"};
+async function run(v){
+  const mode=modes[v], budget=$("#"+v+"_budget").value;
+  try{
+    if(mode==="simple"){
+      const eff=$("#"+v+"_eff"); if($("#"+v+"_efflab")) $("#"+v+"_efflab").textContent=(+eff.value).toFixed(2);
+      const r=await api("cost_effectiveness",{ce_n:6000,annual_budget:budget,
+        patients_reached:$("#"+v+"_reached").value, effect_size_mean:eff.value});
+      renderPoint(v,r);
+    }else{
+      const p={ce_n:6000,annual_budget:budget,annual_unique_visitors:$("#"+v+"_visitors").value};
+      FUNNEL.forEach(f=>{ p[f.k+"_lo"]=$("#"+v+"_"+f.k+"_lo").value; p[f.k+"_hi"]=$("#"+v+"_"+f.k+"_hi").value; });
+      const r=await api("cost_effectiveness_funnel",p);
+      renderBanded(v,r);
+    }
+  }catch(e){ $("#"+v+"_cards").innerHTML=`<div class="card"><div class="v">error</div><div class="k">${e.message}</div></div>`; }
+}
+
+// ---- Variant 1: segmented toggle ----
+function v1setMode(m){
+  modes.v1=m;
+  [...$("#v1_seg").children].forEach(b=>b.classList.toggle("active",b.dataset.mode===m));
+  $("#v1_inputs").innerHTML = m==="simple"?simpleHTML("v1"):funnelHTML("v1");
+  run("v1");
+}
+$("#v1_seg").addEventListener("click",e=>{ const b=e.target.closest("button"); if(b) v1setMode(b.dataset.mode); });
+$("#v1").addEventListener("input",e=>{ if(e.target.id!=="v1_budget"||true) run("v1"); });
+v1setMode("simple");
+
+// ---- Variant 2: two radio cards (both always rendered) ----
+$("#v2_simple").innerHTML=simpleHTML("v2");
+$("#v2_funnel").innerHTML=funnelHTML("v2");
+function v2setMode(m){
+  modes.v2=m;
+  $("#v2_card_simple").classList.toggle("active",m==="simple");
+  $("#v2_card_simple").classList.toggle("inactive",m!=="simple");
+  $("#v2_card_funnel").classList.toggle("active",m==="funnel");
+  $("#v2_card_funnel").classList.toggle("inactive",m!=="funnel");
+  $("#v2_simple").querySelectorAll("input").forEach(i=>i.disabled=(m!=="simple"));
+  $("#v2_funnel").querySelectorAll("input").forEach(i=>i.disabled=(m!=="funnel"));
+  run("v2");
+}
+$("#v2").addEventListener("change",e=>{ if(e.target.name==="v2mode") v2setMode(e.target.value); });
+$("#v2").addEventListener("input",e=>{ if(e.target.type!=="radio") run("v2"); });
+v2setMode("simple");
+
+// ---- Variant 3: radio + collapsible ----
+$("#v3_simple").innerHTML=simpleHTML("v3");
+$("#v3_funnel").innerHTML=funnelHTML("v3");
+function v3setMode(m){
+  modes.v3=m;
+  $("#v3_opt_simple").classList.toggle("collapsed",m!=="simple");
+  $("#v3_opt_funnel").classList.toggle("collapsed",m!=="funnel");
+  run("v3");
+}
+$("#v3").addEventListener("change",e=>{ if(e.target.name==="v3mode") v3setMode(e.target.value); });
+$("#v3").addEventListener("input",e=>{ if(e.target.type!=="radio") run("v3"); });
+v3setMode("simple");
+</script>

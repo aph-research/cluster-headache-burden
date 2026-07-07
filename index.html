@@ -103,6 +103,23 @@
           <input id="ce_eff" type="range" min="0" max="1" step="0.01" value="0.6" style="width:100%">
         </div>
       </div>
+      <details id="funnelBox" style="margin-top:12px;border-top:1px solid var(--bd,#333);padding-top:10px">
+        <summary style="cursor:pointer;font-size:12px;font-weight:600">
+          Estimate reach &amp; effect from metrics (funnel)
+          <span class="info" data-tip="Build 'patients reached' and 'avg effect size' bottom-up from observable metrics instead of typing them in. Each factor is a plausible LOW–HIGH range; the model Monte-Carlo-samples them and shows p10 / median / p90 bands. patients_reached = annual unique visitors × patient share × engagement × adoption. effect size = additionality × clinical capture. Sources: visitor/share/engagement/adoption from PostHog (uniques, referrer mix, scroll+dwell+guide-opens, prints/return-visits or an opt-in follow-up cohort); additionality and clinical capture from the website survey (Q3, and Q7–Q9 severe-attack reduction).">ⓘ</span>
+        </summary>
+        <div style="display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap;font-size:12px;margin-top:10px">
+          <label style="display:flex;align-items:center;gap:6px;font-weight:600">
+            <input id="fun_use" type="checkbox"> Use funnel estimate for the cards
+          </label>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <span>Annual unique visitors <span class="info" data-tip="Annualized unique visitors from PostHog — NOT the cumulative count to date. If you only have a few months, extrapolate the steady-state rate.">ⓘ</span></span>
+            <input id="fun_visitors" type="number" value="8000" step="500" style="width:120px">
+          </div>
+        </div>
+        <div id="funnelInputs" style="display:flex;gap:22px 26px;flex-wrap:wrap;margin-top:12px;font-size:12px"></div>
+        <div id="funnelImplied" style="margin-top:12px;font-size:12px;color:var(--mut)"></div>
+      </details>
       <div class="cards" id="ceCards" style="margin:12px 0 4px"></div>
     </div>
 
@@ -185,8 +202,66 @@ const dark = {paper_bgcolor:"#181b22",plot_bgcolor:"#181b22",
               font:{color:"#e6e8ec",size:11,family:"system-ui,Segoe UI,Roboto,sans-serif"},
               margin:{t:34,r:10,b:38,l:48},showlegend:false};
 
+// ---- data layer -----------------------------------------------------------
+// Auto-detects its runtime: if a local Python backend answers (dev, via
+// `python3 server.py`), it uses that. Otherwise (static hosting, e.g. Vercel)
+// it runs the SAME webapi.dispatch() in-browser via Pyodide (Python+NumPy in
+// WebAssembly). Relative URLs keep the two apart: served at "/" -> backend;
+// served under /burden/ as static files -> the probe 404s -> Pyodide.
+let API_MODE=null, _cfgCache=null, pyodide=null;
+const PYODIDE_BASE="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/";
+function loadScript(src){ return new Promise((ok,err)=>{
+  const s=document.createElement("script"); s.src=src; s.onload=ok; s.onerror=err;
+  document.head.appendChild(s); }); }
+async function initPyodide(){
+  $("#status").textContent="loading Python (first visit, ~10–20s)…";
+  if(!window.loadPyodide) await loadScript(PYODIDE_BASE+"pyodide.js");
+  pyodide=await loadPyodide({indexURL:PYODIDE_BASE});
+  await pyodide.loadPackage("numpy");
+  for(const f of ["ch_simulation.py","webapi.py"]){
+    pyodide.FS.writeFile(f, await (await fetch(f)).text());
+  }
+  pyodide.runPython(`
+import json, webapi
+def _js_dispatch(endpoint, params_json):
+    out = webapi.dispatch(endpoint, json.loads(params_json))
+    return out if isinstance(out, str) else json.dumps(out)
+`);
+}
+async function ensureMode(){
+  if(API_MODE) return API_MODE;
+  try{
+    const r=await fetch("api/config",{cache:"no-store"});
+    if(r.ok){ _cfgCache=await r.json(); return (API_MODE="server"); }
+    throw 0;
+  }catch(e){ await initPyodide(); return (API_MODE="pyodide"); }
+}
+async function api(endpoint, params){
+  await ensureMode();
+  if(API_MODE==="server"){
+    if(endpoint==="config" && _cfgCache) return _cfgCache;
+    const qs=new URLSearchParams(params||{}).toString();
+    const r=await fetch(`api/${endpoint}${qs?"?"+qs:""}`);
+    const j=await r.json();
+    if(!r.ok || j.error) throw new Error(j.error || ("HTTP "+r.status));
+    return j;
+  }
+  return JSON.parse(pyodide.globals.get("_js_dispatch")(endpoint, JSON.stringify(params||{})));
+}
+async function apiCSV(endpoint, params, filename){
+  await ensureMode();
+  if(API_MODE==="server"){
+    window.location.href=`api/${endpoint}?`+new URLSearchParams(params||{}).toString();
+    return;
+  }
+  const csv=pyodide.globals.get("_js_dispatch")(endpoint, JSON.stringify(params||{}));
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+  a.download=filename||"export.csv"; a.click(); URL.revokeObjectURL(a.href);
+}
+
 async function init(){
-  const cfg = await (await fetch("/api/config")).json();
+  const cfg = await api("config");
   SL=cfg.sliders; DEF=cfg.defaults;
   const p=$("#panel");
   for(const [g,keys] of Object.entries(GROUPS)){
@@ -212,11 +287,39 @@ async function init(){
       runCE();
     });
   });
+  // ---- Reach funnel: bottom-up patients_reached & effect_size_mean ----
+  const FUNNEL=[
+    {k:"patient_fraction",label:"P(patient | visitor)",lo:0.45,hi:0.70,step:0.01,
+     tip:"Share of visitors who are actual CH patients (not caregivers, clinicians, researchers, curious). Anchor with PostHog referrer mix (patient forums/FB groups vs. clinical/press) and any survey self-ID."},
+    {k:"engaged_fraction",label:"P(engaged | patient)",lo:0.25,hi:0.50,step:0.01,
+     tip:"Share of patient-visitors who genuinely engage: scroll ≥75%, dwell >40s, guide-open, chapter completion. From PostHog behavioral events."},
+    {k:"adoption_fraction",label:"P(adopts treatment | engaged)",lo:0.05,hi:0.20,step:0.01,
+     tip:"Share of engaged patients who actually try/change a treatment. NOT observable from behavior — anchor a floor with prints & return-visits, and pin the rate with an opt-in 4-week follow-up cohort. This factor dominates the uncertainty."},
+    {k:"additionality",label:"Additionality (not 'anyway')",lo:0.30,hi:0.70,step:0.01,
+     tip:"Counterfactual credit: fraction of the benefit that would NOT have happened without us. From survey Q3 (Very unlikely→1.0, Unlikely→0.7, Likely→0.3, Very likely→0.1). Lives here, NOT in reach, to avoid double-counting."},
+    {k:"clinical_capture",label:"Clinical capture",lo:0.50,hi:0.85,step:0.01,
+     tip:"Realized share of the full no-treatment→full-access benefit adopters actually get (partial adherence/effectiveness). From survey Q7–Q9 severe-attack reduction relative to the model's full-access reduction."},
+  ];
+  {
+    const box=$("#funnelInputs");
+    FUNNEL.forEach(f=>{
+      const el=document.createElement("div");
+      el.style.cssText="display:flex;flex-direction:column;gap:6px;min-width:190px";
+      el.innerHTML=`<span>${f.label} <span class="info" data-tip="${f.tip.replace(/"/g,'&quot;')}">ⓘ</span></span>
+        <span style="display:flex;gap:6px;align-items:center">
+          <input id="fun_${f.k}_lo" type="number" value="${f.lo}" min="0" max="1" step="${f.step}" style="width:70px">
+          <span style="color:var(--mut)">–</span>
+          <input id="fun_${f.k}_hi" type="number" value="${f.hi}" min="0" max="1" step="${f.step}" style="width:70px">
+        </span>`;
+      box.appendChild(el);
+    });
+    ["fun_use","fun_visitors",...FUNNEL.flatMap(f=>[`fun_${f.k}_lo`,`fun_${f.k}_hi`])]
+      .forEach(id=>$("#"+id).addEventListener("input",runCE));
+  }
   const actions=document.createElement("div"); actions.className="actions";
   const exp=document.createElement("button"); exp.textContent="⬇ Export CSV (3035 patients)";
   exp.title="Everything the cost-effectiveness spreadsheet needs: per untreated patient, baseline + 'with access' attacks (abortive / preventive / both) with averted attacks/time/severe/DLES";
-  exp.onclick=()=>{ const qs=Object.entries(state).map(([k,v])=>`${k}=${v}`).join("&");
-    window.location.href="/api/export_counterfactual?"+qs+"&n_export=3035"; };
+  exp.onclick=()=>apiCSV("export_counterfactual", {...state, n_export:3035}, "ch_counterfactual.csv");
   actions.appendChild(exp);
   const reset=document.createElement("button"); reset.textContent="Reset defaults"; reset.className="sec";
   reset.onclick=()=>{for(const k in state){state[k]=DEF[k]; const i=$("#in_"+k); if(i){i.value=DEF[k]; $("#lab_"+k).textContent=DEF[k];}} run();};
@@ -228,19 +331,52 @@ let timer=null;
 function schedule(){ clearTimeout(timer); timer=setTimeout(run,250); }
 async function run(){
   $("#status").textContent="running…";
-  const qs=Object.entries(state).map(([k,v])=>`${k}=${v}`).join("&");
-  const r=await (await fetch("/api/simulate?"+qs)).json();
-  if(r.error){ $("#status").textContent="error: "+r.error; return; }
-  draw(r); $("#status").textContent="done."; runCE();
+  try{
+    const r=await api("simulate", state);
+    draw(r); $("#status").textContent="done."; runCE();
+  }catch(e){ $("#status").textContent="error: "+e.message; }
 }
 async function runCE(){
   $("#ceStatus").textContent="…";
-  const sim=Object.entries(state).map(([k,v])=>`${k}=${v}`).join("&");
-  const ce=`annual_budget=${$("#ce_budget").value}&patients_reached=${$("#ce_reached").value}`
-          +`&effect_size_mean=${$("#ce_eff").value}`;
-  const r=await (await fetch(`/api/cost_effectiveness?${sim}&${ce}`)).json();
-  if(r.error){ $("#ceStatus").textContent="error: "+r.error; return; }
+  const useFunnel=$("#fun_use") && $("#fun_use").checked;
   const money=x=> x==null ? "–" : "$"+fmt(x);
+  let r;
+  if(useFunnel){
+    const p={...state, annual_budget:$("#ce_budget").value,
+             annual_unique_visitors:$("#fun_visitors").value};
+    ["patient_fraction","engaged_fraction","adoption_fraction","additionality","clinical_capture"]
+      .forEach(k=>{ p[k+"_lo"]=$("#fun_"+k+"_lo").value; p[k+"_hi"]=$("#fun_"+k+"_hi").value; });
+    try{ r=await api("cost_effectiveness_funnel", p); }
+    catch(e){ $("#ceStatus").textContent="error: "+e.message; return; }
+    // band helpers: value metrics rise with benefit; cost metrics are already
+    // p10=pessimistic(high)/p90=optimistic(low) from the backend.
+    const band=b=> `${fmt(b.p10)} – ${fmt(b.p90)}`;
+    const moneyBand=b=> `${money(b.p90)} – ${money(b.p10)}`;
+    const cell=(main,sub)=>`<div class="v">${main}</div><div class="k" style="opacity:.65;font-size:10px">p10–p90: ${sub}</div>`;
+    const cards=[
+      ["$ / DLES averted", money(r.cost_per_dles.p50), moneyBand(r.cost_per_dles)],
+      ["DLES averted / yr", fmt(r.dles_averted.p50), band(r.dles_averted)],
+      ["$ / attack-hour averted", money(r.cost_per_attack_hour.p50), moneyBand(r.cost_per_attack_hour)],
+      ["Attack-hours averted / yr", fmt(r.attack_hours_averted.p50), band(r.attack_hours_averted)],
+      ["$ / attack averted", money(r.cost_per_attack.p50), moneyBand(r.cost_per_attack)],
+      ["Attacks averted / yr", fmt(r.attacks_averted.p50), band(r.attacks_averted)],
+      ["$ / severe attack averted", money(r.cost_per_severe_attack.p50), moneyBand(r.cost_per_severe_attack)],
+      ["Severe (≥9/10) attacks averted / yr", fmt(r.severe_attacks_averted.p50), band(r.severe_attacks_averted)],
+    ];
+    $("#ceCards").innerHTML=cards.map(c=>`<div class="card">${cell(c[1],c[2])}<div class="k">${c[0]}</div></div>`).join("");
+    const pr=r.patients_reached, ef=r.effect_size_mean;
+    $("#funnelImplied").innerHTML=
+      `Implied <b>patients reached/yr</b>: ${fmt(pr.p50)} <span style="opacity:.7">(p10–p90: ${fmt(pr.p10)}–${fmt(pr.p90)})</span>`+
+      ` &nbsp;·&nbsp; <b>avg effect size</b>: ${pr.p50?ef.p50.toFixed(2):"–"} <span style="opacity:.7">(${ef.p10.toFixed(2)}–${ef.p90.toFixed(2)})</span>`+
+      ` &nbsp;·&nbsp; <span style="opacity:.7">${r.n_mc.toLocaleString()} draws</span>`;
+    $("#ceStatus").textContent="funnel";
+    return;
+  }
+  try{
+    r=await api("cost_effectiveness", {...state,
+      annual_budget:$("#ce_budget").value, patients_reached:$("#ce_reached").value,
+      effect_size_mean:$("#ce_eff").value});
+  }catch(e){ $("#ceStatus").textContent="error: "+e.message; return; }
   const cards=[
     ["$ / DLES averted", money(r.cost_per_dles)],
     ["DLES averted / yr", fmt(r.dles_averted)],
@@ -252,6 +388,7 @@ async function runCE(){
     ["Severe (≥9/10) attacks averted / yr", fmt(r.severe_attacks_averted)],
   ];
   $("#ceCards").innerHTML=cards.map(c=>`<div class="card"><div class="v">${c[1]}</div><div class="k">${c[0]}</div></div>`).join("");
+  $("#funnelImplied").innerHTML="";
   $("#ceStatus").textContent="";
 }
 function draw(r){
@@ -284,11 +421,13 @@ function draw(r){
 document.addEventListener("click", e=>{ if(e.target && e.target.id==="sensBtn") runSensitivity(); });
 async function runSensitivity(){
   const metric=$("#sensMetric").value;
-  $("#sensStatus").textContent="running ~40 sims…";
-  const qs=Object.entries(state).map(([k,v])=>`${k}=${v}`).join("&");
-  const r=await (await fetch(`/api/sensitivity?${qs}&metric=${metric}&n_sens=6000`)).json();
-  if(r.error){ $("#sensStatus").textContent="error: "+r.error; return; }
-  drawTornado(r); $("#sensStatus").textContent=`done (base = ${fmt(r.base)})`;
+  const mode=await ensureMode();
+  const n_sens = mode==="pyodide" ? 3000 : 6000;
+  $("#sensStatus").textContent = mode==="pyodide" ? "running in-browser (~20–40s)…" : "running ~40 sims…";
+  try{
+    const r=await api("sensitivity", {...state, metric, n_sens});
+    drawTornado(r); $("#sensStatus").textContent=`done (base = ${fmt(r.base)})`;
+  }catch(e){ $("#sensStatus").textContent="error: "+e.message; }
 }
 function drawTornado(r){
   // biggest span first -> put at top (reverse for Plotly bottom-up order)

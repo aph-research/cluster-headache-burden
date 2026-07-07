@@ -38,6 +38,9 @@ python3 server.py            # then open http://localhost:8000
 python3 server.py 8080       # custom port
 ```
 
+To publish the dashboard **publicly with no backend** (it runs the model
+in-browser via Pyodide), see [`DEPLOY.md`](DEPLOY.md).
+
 ---
 
 ## What the model does
@@ -74,8 +77,10 @@ Results are scaled to the worldwide CH population via annual prevalence.
 | File | What it is |
 |---|---|
 | [`ch_simulation.py`](ch_simulation.py) | The model. `Config` (all levers) → `simulate()` → `SimulationResult` with raw per-attack arrays, the global intensity distribution, true time-at-each-level, CSV export, and a `sweep()` helper for sensitivity. |
-| [`server.py`](server.py) | Zero-dependency stdlib HTTP server exposing the model as a small JSON API (`/api/simulate`, `/api/sensitivity`, `/api/export`). |
-| [`index.html`](index.html) | Browser UI: a slider per lever, live Plotly charts, and a sensitivity tornado over each parameter's literature-plausible range. |
+| [`webapi.py`](webapi.py) | Shared compute layer (slider metadata, plausible ranges, and `dispatch(endpoint, params)`). No transport code, so the local server and the in-browser build run identical logic. |
+| [`server.py`](server.py) | Zero-dependency stdlib HTTP server for local dev; a thin wrapper over `webapi.dispatch`. |
+| [`index.html`](index.html) | Browser UI: a slider per lever, live Plotly charts, and a sensitivity tornado. Dual-mode: uses the local server if present, else runs the model in-browser via Pyodide. |
+| [`DEPLOY.md`](DEPLOY.md) | How to publish the dashboard as a static page (e.g. `clusterfree.org/burden`) with no backend. |
 | [`CH_simulation_sources.md`](CH_simulation_sources.md) | Provenance for **every** default value, tagged `[measured]` / `[pooled]` / `[definitional]` / `[assumption]`, with citations. |
 | [`CH simulation parameters.md`](CH%20simulation%20parameters.md) | Distilled research parameters behind the model (frequency, duration, intensity, treatment). |
 | [`validate.py`](validate.py) | Sanity-check suite: hard invariants, per-patient physical plausibility, and population realism vs the literature, plus a random-patient eyeball sample. |
