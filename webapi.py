@@ -204,12 +204,12 @@ def dispatch(endpoint, params=None):
 
         kw = dict(
             annual_budget=float(params.get("annual_budget", 100000)),
-            annual_unique_visitors=float(params.get("annual_unique_visitors", 8000)),
-            patient_fraction=gauss("patient_fraction", 0.575, 0.0625),
-            engaged_fraction=gauss("engaged_fraction", 0.375, 0.0625),
-            adoption_fraction=gauss("adoption_fraction", 0.125, 0.0375),
-            counterfactual_share=gauss("counterfactual_share", 0.50, 0.10),
-            clinical_capture=gauss("clinical_capture", 0.675, 0.0875),
+            annual_unique_visitors=float(params.get("annual_unique_visitors", 10000)),
+            patient_fraction=gauss("patient_fraction", 0.75, 0.10),
+            engaged_fraction=gauss("engaged_fraction", 0.30, 0.10),
+            adoption_fraction=gauss("adoption_fraction", 0.12, 0.06),
+            counterfactual_share=gauss("counterfactual_share", 0.50, 0.12),
+            clinical_capture=gauss("clinical_capture", 0.50, 0.13),
             n_mc=int(float(params.get("n_mc", 5000))),
         )
         return cost_effectiveness_funnel(**kw, **overrides)

@@ -716,13 +716,13 @@ EFFECT_FACTORS = ("clinical_capture",)
 
 def cost_effectiveness_funnel(
         cfg: Config | None = None, *, annual_budget: float = 100_000.0,
-        annual_unique_visitors: float = 8_000.0,
+        annual_unique_visitors: float = 10_000.0,
         # each factor is a (median, sd) truncated normal, clipped to [0, 1]
-        patient_fraction: tuple = (0.575, 0.0625),
-        engaged_fraction: tuple = (0.375, 0.0625),
-        adoption_fraction: tuple = (0.125, 0.0375),
-        counterfactual_share: tuple = (0.50, 0.10),
-        clinical_capture: tuple = (0.675, 0.0875),
+        patient_fraction: tuple = (0.75, 0.10),
+        engaged_fraction: tuple = (0.30, 0.10),
+        adoption_fraction: tuple = (0.12, 0.06),
+        counterfactual_share: tuple = (0.50, 0.12),
+        clinical_capture: tuple = (0.50, 0.13),
         channel: str = "both",
         beneficiary_episodic_share: float | None = None,
         n_mc: int = 5_000,

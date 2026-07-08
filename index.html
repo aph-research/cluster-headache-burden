@@ -126,7 +126,7 @@
         </div>
         <div style="display:flex;flex-direction:column;gap:6px">
           <span>Annual unique visitors <span class="info" data-tip="Annualized unique visitors from PostHog, NOT the cumulative count to date.">ⓘ</span></span>
-          <input id="fun_visitors" type="text" inputmode="numeric" value="8,000" style="width:120px">
+          <input id="fun_visitors" type="text" inputmode="numeric" value="10,000" style="width:120px">
         </div>
       </div>
       <div id="funnelInputs" style="display:flex;gap:22px 26px;flex-wrap:wrap;margin-top:12px;font-size:12px"></div>
@@ -314,16 +314,16 @@ async function init(){
   // ---- Reach funnel: bottom-up patients_reached & effect_size_mean ----
   // each factor is a truncated normal(median, sd) on [0,1]
   const FUNNEL=[
-    {k:"patient_fraction",label:"P(patient | visitor)",mean:0.575,sd:0.0625,
-     tip:"Share of visitors who are actual CH patients (not caregivers, clinicians, researchers, curious)."},
-    {k:"engaged_fraction",label:"P(engaged | patient)",mean:0.375,sd:0.0625,
-     tip:"Share of patient-visitors who genuinely engage."},
-    {k:"adoption_fraction",label:"P(adopts treatment | engaged)",mean:0.125,sd:0.0375,
-     tip:"Share of engaged patients who actually try/change a treatment."},
-    {k:"counterfactual_share",label:"Counterfactual share",mean:0.50,sd:0.10,
+    {k:"patient_fraction",label:"P(patient | visitor)",mean:0.75,sd:0.10,
+     tip:"Share of visitors who are an actual CH patient, or a caregiver acting for one (not clinicians, researchers, curious/misdirected traffic). High here because traffic comes almost entirely from CH communities and targeted sharing."},
+    {k:"engaged_fraction",label:"P(engaged | patient)",mean:0.30,sd:0.10,
+     tip:"Share of patient-visitors who genuinely engage (read deeply rather than bounce)."},
+    {k:"adoption_fraction",label:"P(adopts treatment | engaged)",mean:0.12,sd:0.06,
+     tip:"Share of engaged patients who actually try/change a treatment. The least-observable factor and the one that dominates the uncertainty, so its spread is kept wide."},
+    {k:"counterfactual_share",label:"Counterfactual share",mean:0.50,sd:0.12,
      tip:"Of the people who adopt a treatment, the share who would NOT have done so without us."},
-    {k:"clinical_capture",label:"Effect size",mean:0.675,sd:0.0875,
-     tip:"Of the full benefit of going from no treatment to both an acute (attack-stopping) and a preventive (frequency-lowering) treatment, the average share an adopter actually realizes. 1.0 does NOT mean pain-free."},
+    {k:"clinical_capture",label:"Effect size",mean:0.50,sd:0.13,
+     tip:"Of the full benefit of going from no treatment to both an acute (attack-stopping) and a preventive (frequency-lowering) treatment, the average share an adopter actually realizes (most adopt one thing imperfectly). 1.0 does NOT mean pain-free."},
   ];
   {
     const box=$("#funnelInputs");
