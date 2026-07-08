@@ -34,10 +34,10 @@
                   color:var(--mut); margin:22px 0 10px; padding-bottom:6px;
                   border-bottom:1px solid var(--line); }
   main h2.sec-h:first-child { margin-top:0; }
-  #cePanel input[type=range] { accent-color:var(--accv); }
-  #cePanel input[type=number] { background:var(--bg); color:var(--ink);
+  #cfPanel input[type=range], #ciPanel input[type=range] { accent-color:var(--accv); }
+  #cfPanel input[type=number], #ciPanel input[type=number] { background:var(--bg); color:var(--ink);
           border:1px solid var(--line); border-radius:6px; padding:5px 7px; font:inherit; }
-  #cePanel input[type=number]:focus { outline:none; border-color:var(--accv); }
+  #cfPanel input[type=number]:focus, #ciPanel input[type=number]:focus { outline:none; border-color:var(--accv); }
   .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
            gap:10px; margin-bottom:14px; }
   .card { background:var(--panel); border:1px solid var(--line);
@@ -84,43 +84,55 @@
       <div class="chart" id="c_group"></div>
     </div>
 
-    <h2 class="sec-h">Cost-effectiveness <span id="ceStatus" style="font-size:11px;font-weight:400;color:var(--mut);margin-left:6px"></span></h2>
-    <div class="chart full" id="cePanel" style="min-height:0;padding:12px 14px">
+    <h2 class="sec-h">Cost-effectiveness of ClusterFree
+      <span class="info" data-tip="The organization's TOTAL cost-effectiveness across all our initiatives combined (ClusterInfo, the open letters, and everything else). Enter the whole annual budget, the total counterfactual patients reached across all projects, and the effect size. For a single project's bottom-up estimate, see the ClusterInfo section below.">ⓘ</span>
+      <span id="ceStatus" style="font-size:11px;font-weight:400;color:var(--mut);margin-left:6px"></span></h2>
+    <div class="chart full" id="cfPanel" style="min-height:0;padding:12px 14px">
       <div style="display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap;font-size:12px">
         <div style="display:flex;flex-direction:column;gap:6px">
-          <span>Annual budget ($)</span>
-          <input id="ce_budget" type="number" value="250000" step="1000" style="width:120px">
+          <span>Annual ClusterFree budget ($) <span class="info" data-tip="Total annual budget of the organization across all initiatives.">ⓘ</span></span>
+          <input id="ce_budget" type="text" inputmode="numeric" value="100,000" style="width:130px">
         </div>
         <div style="display:flex;flex-direction:column;gap:6px">
-          <span>Patients reached / yr</span>
-          <input id="ce_reached" type="number" value="500" step="10" style="width:120px">
+          <span>Patients reached / yr <span class="info" data-tip="Total counterfactual patients reached per year across ALL initiatives: currently-untreated patients who got treated because of us and would not have otherwise.">ⓘ</span></span>
+          <input id="ce_reached" type="text" inputmode="numeric" value="500" style="width:120px">
         </div>
-        <div style="display:flex;flex-direction:column;gap:6px;min-width:240px;flex:1;max-width:320px">
-          <span style="display:flex;justify-content:space-between;align-items:center">
-            <span>Avg effect size <span class="info" data-tip="On average, how much of the maximum possible benefit our beneficiaries actually get. The maximum (effect size = 1) is a patient going from no treatment at all to fully effective treatment. Actual interventions land below that: some people get treated for the first time, others just trade an okay treatment for a better one, and some would have improved anyway. An effect size of 0.6 means beneficiaries capture, on average, 60% of that full benefit, and only the average matters for the totals. The estimate assumes beneficiaries gain both acute (attack-stopping) and preventive treatment, and that they match the simulated mix of episodic and chronic patients. All the simulation levers on the left feed into these numbers.">ⓘ</span></span>
-            <b id="ce_eff_lab" style="color:var(--accv)">0.60</b>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <span>Effect size <span class="info" data-tip="Of the full benefit of going from no treatment to both an acute (attack-stopping) and a preventive (frequency-lowering) treatment, the average share a beneficiary actually realizes. Effect size = 1 means they capture that full modeled benefit; it does NOT mean pain-free, since even then some attacks aren't caught (failed aborts, non-responders, only-partial frequency cuts). Modelled as a truncated normal (median + std dev) on [0,1].">ⓘ</span></span>
+          <span style="display:flex;gap:8px;align-items:center">
+            <label style="display:flex;flex-direction:column;gap:3px;color:var(--mut);align-items:flex-start">
+              <input id="ce_eff_mean" type="number" value="0.60" min="0" max="1" step="0.01" style="width:64px">
+              <span style="font-size:11px">Median</span></label>
+            <label style="display:flex;flex-direction:column;gap:3px;color:var(--mut);align-items:flex-start">
+              <input id="ce_eff_sd" type="number" value="0.15" min="0" max="0.5" step="0.01" style="width:64px">
+              <span style="font-size:11px">Std dev</span></label>
+            <span id="bell_ce_eff"></span>
           </span>
-          <input id="ce_eff" type="range" min="0" max="1" step="0.01" value="0.6" style="width:100%">
         </div>
       </div>
-      <details id="funnelBox" style="margin-top:12px;border-top:1px solid var(--bd,#333);padding-top:10px">
-        <summary style="cursor:pointer;font-size:12px;font-weight:600">
-          Estimate reach &amp; effect from metrics (funnel)
-          <span class="info" data-tip="Build 'patients reached' and 'avg effect size' bottom-up from observable metrics instead of typing them in. Each factor is a plausible LOW–HIGH range; the model Monte-Carlo-samples them and shows p10 / median / p90 bands. patients_reached = annual unique visitors × patient share × engagement × adoption. effect size = additionality × clinical capture. Sources: visitor/share/engagement/adoption from PostHog (uniques, referrer mix, scroll+dwell+guide-opens, prints/return-visits or an opt-in follow-up cohort); additionality and clinical capture from the website survey (Q3, and Q7–Q9 severe-attack reduction).">ⓘ</span>
-        </summary>
-        <div style="display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap;font-size:12px;margin-top:10px">
-          <label style="display:flex;align-items:center;gap:6px;font-weight:600">
-            <input id="fun_use" type="checkbox"> Use funnel estimate for the cards
-          </label>
-          <div style="display:flex;flex-direction:column;gap:6px">
-            <span>Annual unique visitors <span class="info" data-tip="Annualized unique visitors from PostHog — NOT the cumulative count to date. If you only have a few months, extrapolate the steady-state rate.">ⓘ</span></span>
-            <input id="fun_visitors" type="number" value="8000" step="500" style="width:120px">
-          </div>
+      <div class="cards" id="ceCards" style="margin:12px 0 8px"></div>
+      <div class="cards" id="ceCardsSev" style="margin:0 0 4px"></div>
+    </div>
+
+    <h2 class="sec-h">Cost-effectiveness of ClusterInfo
+      <span class="info" data-tip="Cost-effectiveness of ClusterInfo specifically (one of our projects), with 'patients reached' and 'effect size' built bottom-up from its own metrics instead of typed in. Each factor is a median with a std dev; the model Monte-Carlo-samples them and the cards show median with a p10–p90 band. patients reached = annual unique visitors × patient share × engagement × adoption × counterfactual share.">ⓘ</span>
+      <span id="ciStatus" style="font-size:11px;font-weight:400;color:var(--mut);margin-left:6px"></span></h2>
+    <div class="chart full" id="ciPanel" style="min-height:0;padding:12px 14px">
+      <div style="font-size:11px;color:var(--mut);margin-bottom:10px">Reach &amp; effect estimated bottom-up from ClusterInfo's PostHog analytics and on-site survey.</div>
+      <div style="display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap;font-size:12px">
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <span>Annual ClusterInfo budget ($) <span class="info" data-tip="Annual budget for the ClusterInfo project specifically (a subset of the total ClusterFree budget above).">ⓘ</span></span>
+          <input id="ci_budget" type="text" inputmode="numeric" value="50,000" style="width:130px">
         </div>
-        <div id="funnelInputs" style="display:flex;gap:22px 26px;flex-wrap:wrap;margin-top:12px;font-size:12px"></div>
-        <div id="funnelImplied" style="margin-top:12px;font-size:12px;color:var(--mut)"></div>
-      </details>
-      <div class="cards" id="ceCards" style="margin:12px 0 4px"></div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <span>Annual unique visitors <span class="info" data-tip="Annualized unique visitors from PostHog, NOT the cumulative count to date.">ⓘ</span></span>
+          <input id="fun_visitors" type="text" inputmode="numeric" value="8,000" style="width:120px">
+        </div>
+      </div>
+      <div id="funnelInputs" style="display:flex;gap:22px 26px;flex-wrap:wrap;margin-top:12px;font-size:12px"></div>
+      <div id="funnelImplied" style="margin-top:12px;font-size:12px;color:var(--mut)"></div>
+      <div class="cards" id="ciCards" style="margin:12px 0 8px"></div>
+      <div class="cards" id="ciCardsSev" style="margin:0 0 4px"></div>
     </div>
 
     <h2 class="sec-h">Sensitivity</h2>
@@ -198,6 +210,12 @@ let SL={}, DEF={}, state={};
 const $ = s => document.querySelector(s);
 const fmt = n => Math.abs(n)>=1e6 ? (n/1e6).toFixed(2)+"M"
                 : Math.abs(n)>=1e3 ? Math.round(n).toLocaleString() : (+n).toFixed(2);
+// like fmt but rounds counts >=10 to whole numbers (no noisy decimals on cards)
+const fmtN = n => Math.abs(n)>=1e6 ? (n/1e6).toFixed(2)+"M"
+                : Math.abs(n)>=10  ? Math.round(n).toLocaleString() : (+n).toFixed(1);
+// thousands-separated integer for text inputs (budget / reached / visitors)
+const commafy = v => { const d=String(v).replace(/[^\d]/g,""); return d ? (+d).toLocaleString() : ""; };
+const uncomma = v => String(v).replace(/[^\d.]/g,"");
 const dark = {paper_bgcolor:"#181b22",plot_bgcolor:"#181b22",
               font:{color:"#e6e8ec",size:11,family:"system-ui,Segoe UI,Roboto,sans-serif"},
               margin:{t:34,r:10,b:38,l:48},showlegend:false};
@@ -281,40 +299,56 @@ async function init(){
     }
     p.appendChild(d);
   }
-  ["ce_budget","ce_reached","ce_eff"].forEach(id=>{
+  ["ce_budget","ce_reached","ce_eff_mean","ce_eff_sd"].forEach(id=>{
     $("#"+id).addEventListener("input",()=>{
-      $("#ce_eff_lab").textContent=(+$("#ce_eff").value).toFixed(2);
-      runCE();
+      setBell("bell_ce_eff","ce_eff_mean","ce_eff_sd"); runCF();
     });
   });
+  setBell("bell_ce_eff","ce_eff_mean","ce_eff_sd");
+  // live thousands-separators on the money/count text inputs
+  ["ce_budget","ce_reached","ci_budget","fun_visitors"].forEach(id=>{
+    const el=$("#"+id); if(!el) return;
+    el.addEventListener("input",()=>{ el.value=commafy(el.value);
+      el.setSelectionRange(el.value.length, el.value.length); });
+  });
   // ---- Reach funnel: bottom-up patients_reached & effect_size_mean ----
+  // each factor is a truncated normal(median, sd) on [0,1]
   const FUNNEL=[
-    {k:"patient_fraction",label:"P(patient | visitor)",lo:0.45,hi:0.70,step:0.01,
-     tip:"Share of visitors who are actual CH patients (not caregivers, clinicians, researchers, curious). Anchor with PostHog referrer mix (patient forums/FB groups vs. clinical/press) and any survey self-ID."},
-    {k:"engaged_fraction",label:"P(engaged | patient)",lo:0.25,hi:0.50,step:0.01,
-     tip:"Share of patient-visitors who genuinely engage: scroll ≥75%, dwell >40s, guide-open, chapter completion. From PostHog behavioral events."},
-    {k:"adoption_fraction",label:"P(adopts treatment | engaged)",lo:0.05,hi:0.20,step:0.01,
-     tip:"Share of engaged patients who actually try/change a treatment. NOT observable from behavior — anchor a floor with prints & return-visits, and pin the rate with an opt-in 4-week follow-up cohort. This factor dominates the uncertainty."},
-    {k:"additionality",label:"Additionality (not 'anyway')",lo:0.30,hi:0.70,step:0.01,
-     tip:"Counterfactual credit: fraction of the benefit that would NOT have happened without us. From survey Q3 (Very unlikely→1.0, Unlikely→0.7, Likely→0.3, Very likely→0.1). Lives here, NOT in reach, to avoid double-counting."},
-    {k:"clinical_capture",label:"Clinical capture",lo:0.50,hi:0.85,step:0.01,
-     tip:"Realized share of the full no-treatment→full-access benefit adopters actually get (partial adherence/effectiveness). From survey Q7–Q9 severe-attack reduction relative to the model's full-access reduction."},
+    {k:"patient_fraction",label:"P(patient | visitor)",mean:0.575,sd:0.0625,
+     tip:"Share of visitors who are actual CH patients (not caregivers, clinicians, researchers, curious)."},
+    {k:"engaged_fraction",label:"P(engaged | patient)",mean:0.375,sd:0.0625,
+     tip:"Share of patient-visitors who genuinely engage."},
+    {k:"adoption_fraction",label:"P(adopts treatment | engaged)",mean:0.125,sd:0.0375,
+     tip:"Share of engaged patients who actually try/change a treatment."},
+    {k:"counterfactual_share",label:"Counterfactual share",mean:0.50,sd:0.10,
+     tip:"Of the people who adopt a treatment, the share who would NOT have done so without us."},
+    {k:"clinical_capture",label:"Effect size",mean:0.675,sd:0.0875,
+     tip:"Of the full benefit of going from no treatment to both an acute (attack-stopping) and a preventive (frequency-lowering) treatment, the average share an adopter actually realizes. 1.0 does NOT mean pain-free."},
   ];
   {
     const box=$("#funnelInputs");
     FUNNEL.forEach(f=>{
       const el=document.createElement("div");
-      el.style.cssText="display:flex;flex-direction:column;gap:6px;min-width:190px";
+      el.style.cssText="display:flex;flex-direction:column;gap:6px;min-width:210px";
       el.innerHTML=`<span>${f.label} <span class="info" data-tip="${f.tip.replace(/"/g,'&quot;')}">ⓘ</span></span>
-        <span style="display:flex;gap:6px;align-items:center">
-          <input id="fun_${f.k}_lo" type="number" value="${f.lo}" min="0" max="1" step="${f.step}" style="width:70px">
-          <span style="color:var(--mut)">–</span>
-          <input id="fun_${f.k}_hi" type="number" value="${f.hi}" min="0" max="1" step="${f.step}" style="width:70px">
+        <span style="display:flex;gap:8px;align-items:center">
+          <label style="display:flex;flex-direction:column;gap:3px;color:var(--mut);align-items:flex-start">
+            <input id="fun_${f.k}_mean" type="number" value="${f.mean}" min="0" max="1" step="0.01" style="width:64px">
+            <span style="font-size:11px">Median</span></label>
+          <label style="display:flex;flex-direction:column;gap:3px;color:var(--mut);align-items:flex-start">
+            <input id="fun_${f.k}_sd" type="number" value="${f.sd}" min="0" max="0.5" step="0.005" style="width:64px">
+            <span style="font-size:11px">Std dev</span></label>
+          <span id="bell_fun_${f.k}"></span>
         </span>`;
       box.appendChild(el);
     });
-    ["fun_use","fun_visitors",...FUNNEL.flatMap(f=>[`fun_${f.k}_lo`,`fun_${f.k}_hi`])]
-      .forEach(id=>$("#"+id).addEventListener("input",runCE));
+    FUNNEL.forEach(f=> setBell(`bell_fun_${f.k}`,`fun_${f.k}_mean`,`fun_${f.k}_sd`));
+    ["ci_budget","fun_visitors",...FUNNEL.flatMap(f=>[`fun_${f.k}_mean`,`fun_${f.k}_sd`])]
+      .forEach(id=>$("#"+id).addEventListener("input",()=>{
+        const f=FUNNEL.find(x=>id===`fun_${x.k}_mean`||id===`fun_${x.k}_sd`);
+        if(f) setBell(`bell_fun_${f.k}`,`fun_${f.k}_mean`,`fun_${f.k}_sd`);
+        runCI();
+      }));
   }
   const actions=document.createElement("div"); actions.className="actions";
   const exp=document.createElement("button"); exp.textContent="⬇ Export CSV (3035 patients)";
@@ -333,63 +367,81 @@ async function run(){
   $("#status").textContent="running…";
   try{
     const r=await api("simulate", state);
-    draw(r); $("#status").textContent="done."; runCE();
+    draw(r); $("#status").textContent="done."; runCF(); runCI();
   }catch(e){ $("#status").textContent="error: "+e.message; }
 }
-async function runCE(){
+// shared card order: general -> specific (all attacks, then severe/extreme), each
+// quantity followed by its cost. Used by BOTH cost-effectiveness sections.
+const CE_ROWS = [
+  ["Attacks averted / yr", "attacks_averted", "n"],
+  ["$ / attack averted", "cost_per_attack", "$"],
+  ["Attack-hours averted / yr", "attack_hours_averted", "n"],
+  ["$ / attack-hour averted", "cost_per_attack_hour", "$"],
+  ["Severe (≥9/10) attacks averted / yr", "severe_attacks_averted", "n"],
+  ["$ / severe (≥9/10) attack averted", "cost_per_severe_attack", "$"],
+  ["DLES (days at ≥9/10) averted / yr", "dles_averted", "n"],
+  ["$ / DLES averted", "cost_per_dles", "$"],
+];
+const money=x=> x==null ? "–" : "$"+fmtN(x);
+// band helpers (value metrics rise with benefit; cost metrics come back already
+// flipped so p10=pessimistic/p90=optimistic from the backend).
+const band=b=> `${fmtN(b.p10)} – ${fmtN(b.p90)}`;
+const moneyBand=b=> `${money(b.p90)} – ${money(b.p10)}`;
+// little inline bell curve for a truncated normal(median, sd) on [0,1]
+function bellSVG(mean, sd){
+  const w=150,h=42,pad=3; mean=Math.max(0,Math.min(1,+mean||0)); sd=Math.max(+sd||0,0.005);
+  let d="";
+  for(let i=0;i<=48;i++){ const x=i/48, y=Math.exp(-0.5*((x-mean)/sd)**2);
+    d+=(i?" L":"M")+(pad+x*(w-2*pad)).toFixed(1)+","+(h-pad-y*(h-2*pad-2)).toFixed(1); }
+  const mx=(pad+mean*(w-2*pad)).toFixed(1);
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="display:block">`+
+    `<line x1="${pad}" y1="${h-pad}" x2="${w-pad}" y2="${h-pad}" stroke="var(--line)"/>`+
+    `<path d="${d}" fill="none" stroke="var(--accv)" stroke-width="1.5"/>`+
+    `<line x1="${mx}" y1="${pad}" x2="${mx}" y2="${h-pad}" stroke="var(--mut)" stroke-dasharray="3,3"/></svg>`;
+}
+function setBell(bellId, meanId, sdId){
+  const el=$("#"+bellId); if(el) el.innerHTML=bellSVG($("#"+meanId).value, $("#"+sdId).value);
+}
+// shared renderer: first 4 rows (all attacks) -> genId, last 4 (severe) -> sevId.
+function renderCEcards(genId, sevId, r, isBand){
+  const one=([label,key,kind])=>{
+    const main = isBand ? (kind==="$"?money(r[key].p50):fmtN(r[key].p50))
+                        : (kind==="$"?money(r[key]):fmtN(r[key]));
+    const sub  = isBand ? `<div class="k" style="opacity:.65;font-size:10px">p10–p90: ${kind==="$"?moneyBand(r[key]):band(r[key])}</div>` : "";
+    return `<div class="card"><div class="v">${main}</div>${sub}<div class="k">${label}</div></div>`;
+  };
+  $("#"+genId).innerHTML=CE_ROWS.slice(0,4).map(one).join("");
+  $("#"+sevId).innerHTML=CE_ROWS.slice(4).map(one).join("");
+}
+// ClusterFree: org-wide total, manual point inputs
+async function runCF(){
   $("#ceStatus").textContent="…";
-  const useFunnel=$("#fun_use") && $("#fun_use").checked;
-  const money=x=> x==null ? "–" : "$"+fmt(x);
   let r;
-  if(useFunnel){
-    const p={...state, annual_budget:$("#ce_budget").value,
-             annual_unique_visitors:$("#fun_visitors").value};
-    ["patient_fraction","engaged_fraction","adoption_fraction","additionality","clinical_capture"]
-      .forEach(k=>{ p[k+"_lo"]=$("#fun_"+k+"_lo").value; p[k+"_hi"]=$("#fun_"+k+"_hi").value; });
-    try{ r=await api("cost_effectiveness_funnel", p); }
-    catch(e){ $("#ceStatus").textContent="error: "+e.message; return; }
-    // band helpers: value metrics rise with benefit; cost metrics are already
-    // p10=pessimistic(high)/p90=optimistic(low) from the backend.
-    const band=b=> `${fmt(b.p10)} – ${fmt(b.p90)}`;
-    const moneyBand=b=> `${money(b.p90)} – ${money(b.p10)}`;
-    const cell=(main,sub)=>`<div class="v">${main}</div><div class="k" style="opacity:.65;font-size:10px">p10–p90: ${sub}</div>`;
-    const cards=[
-      ["$ / DLES averted", money(r.cost_per_dles.p50), moneyBand(r.cost_per_dles)],
-      ["DLES averted / yr", fmt(r.dles_averted.p50), band(r.dles_averted)],
-      ["$ / attack-hour averted", money(r.cost_per_attack_hour.p50), moneyBand(r.cost_per_attack_hour)],
-      ["Attack-hours averted / yr", fmt(r.attack_hours_averted.p50), band(r.attack_hours_averted)],
-      ["$ / attack averted", money(r.cost_per_attack.p50), moneyBand(r.cost_per_attack)],
-      ["Attacks averted / yr", fmt(r.attacks_averted.p50), band(r.attacks_averted)],
-      ["$ / severe attack averted", money(r.cost_per_severe_attack.p50), moneyBand(r.cost_per_severe_attack)],
-      ["Severe (≥9/10) attacks averted / yr", fmt(r.severe_attacks_averted.p50), band(r.severe_attacks_averted)],
-    ];
-    $("#ceCards").innerHTML=cards.map(c=>`<div class="card">${cell(c[1],c[2])}<div class="k">${c[0]}</div></div>`).join("");
-    const pr=r.patients_reached, ef=r.effect_size_mean;
-    $("#funnelImplied").innerHTML=
-      `Implied <b>patients reached/yr</b>: ${fmt(pr.p50)} <span style="opacity:.7">(p10–p90: ${fmt(pr.p10)}–${fmt(pr.p90)})</span>`+
-      ` &nbsp;·&nbsp; <b>avg effect size</b>: ${pr.p50?ef.p50.toFixed(2):"–"} <span style="opacity:.7">(${ef.p10.toFixed(2)}–${ef.p90.toFixed(2)})</span>`+
-      ` &nbsp;·&nbsp; <span style="opacity:.7">${r.n_mc.toLocaleString()} draws</span>`;
-    $("#ceStatus").textContent="funnel";
-    return;
-  }
   try{
     r=await api("cost_effectiveness", {...state,
-      annual_budget:$("#ce_budget").value, patients_reached:$("#ce_reached").value,
-      effect_size_mean:$("#ce_eff").value});
+      annual_budget:uncomma($("#ce_budget").value), patients_reached:uncomma($("#ce_reached").value),
+      effect_size_mean:$("#ce_eff_mean").value, effect_size_sd:$("#ce_eff_sd").value});
   }catch(e){ $("#ceStatus").textContent="error: "+e.message; return; }
-  const cards=[
-    ["$ / DLES averted", money(r.cost_per_dles)],
-    ["DLES averted / yr", fmt(r.dles_averted)],
-    ["$ / attack-hour averted", money(r.cost_per_attack_hour)],
-    ["Attack-hours averted / yr", fmt(r.attack_hours_averted)],
-    ["$ / attack averted", money(r.cost_per_attack)],
-    ["Attacks averted / yr", fmt(r.attacks_averted)],
-    ["$ / severe attack averted", money(r.cost_per_severe_attack)],
-    ["Severe (≥9/10) attacks averted / yr", fmt(r.severe_attacks_averted)],
-  ];
-  $("#ceCards").innerHTML=cards.map(c=>`<div class="card"><div class="v">${c[1]}</div><div class="k">${c[0]}</div></div>`).join("");
-  $("#funnelImplied").innerHTML="";
+  renderCEcards("ceCards","ceCardsSev", r, true);
   $("#ceStatus").textContent="";
+}
+// ClusterInfo: bottom-up funnel, Monte-Carlo bands
+async function runCI(){
+  $("#ciStatus").textContent="…";
+  const p={...state, annual_budget:uncomma($("#ci_budget").value),
+           annual_unique_visitors:uncomma($("#fun_visitors").value)};
+  ["patient_fraction","engaged_fraction","adoption_fraction","counterfactual_share","clinical_capture"]
+    .forEach(k=>{ p[k+"_mean"]=$("#fun_"+k+"_mean").value; p[k+"_sd"]=$("#fun_"+k+"_sd").value; });
+  let r;
+  try{ r=await api("cost_effectiveness_funnel", p); }
+  catch(e){ $("#ciStatus").textContent="error: "+e.message; return; }
+  renderCEcards("ciCards","ciCardsSev", r, true);
+  const pr=r.patients_reached;
+  const rnd=n=>Math.round(n).toLocaleString();
+  $("#funnelImplied").innerHTML=
+    `Implied <b>counterfactual patients reached/yr</b>: ${rnd(pr.p50)} <span style="opacity:.7">(p10–p90: ${rnd(pr.p10)}–${rnd(pr.p90)})</span>`+
+    ` &nbsp;·&nbsp; <span style="opacity:.7">${r.n_mc.toLocaleString()} draws</span>`;
+  $("#ciStatus").textContent="";
 }
 function draw(r){
   const s=r.summary;
@@ -406,10 +458,10 @@ function draw(r){
   $("#cards").innerHTML=cards.map(c=>`<div class="card"><div class="v">${c[1]}</div><div class="k">${c[0]}</div></div>`).join("");
   const lv=[1,2,3,4,5,6,7,8,9,10];
   Plotly.react("c_peak",[{x:lv,y:r.by_peak,type:"bar",marker:{color:"#4F2AC4"}}],
-    {...dark,title:"Attacks/yr by PEAK intensity",xaxis:{title:"peak NRS",dtick:1},yaxis:{title:"attacks/yr",hoverformat:",.0f"}},{displayModeBar:false});
+    {...dark,title:"Attacks/yr by peak intensity",xaxis:{title:"peak NRS",dtick:1},yaxis:{title:"attacks/yr",hoverformat:",.0f"}},{displayModeBar:false});
   const py=r.time_at_levels.map(m=>m/60/24/365);
   Plotly.react("c_level",[{x:lv,y:py,type:"bar",marker:{color:"#F85604"}}],
-    {...dark,title:"Person-years/yr spent AT each intensity",xaxis:{title:"NRS",dtick:1},yaxis:{title:"person-years",hoverformat:",.1f"}},
+    {...dark,title:"Person-years/yr spent at each intensity",xaxis:{title:"NRS",dtick:1},yaxis:{title:"person-years",hoverformat:",.1f"}},
     {displayModeBar:false});
   Plotly.react("c_tail",[{x:r.attacks_hist.centers,y:r.attacks_hist.counts,type:"bar",marker:{color:"#4aa3ff"}}],
     {...dark,title:"Attacks/yr per patient (long tail)",xaxis:{title:"attacks/yr",type:"log",hoverformat:",.1f"},yaxis:{title:"# patients",hoverformat:",.0f"}},{displayModeBar:false});

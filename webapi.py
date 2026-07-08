@@ -24,7 +24,7 @@ import numpy as np
 
 from ch_simulation import (
     Config, simulate, counterfactual_csv, cost_effectiveness,
-    cost_effectiveness_funnel,
+    cost_effectiveness_bands, cost_effectiveness_funnel,
 )
 
 # Levers exposed in the UI, with [min, max, step] slider ranges.
@@ -180,33 +180,36 @@ def dispatch(endpoint, params=None):
         return sensitivity_payload(_overrides(params), metric, n_sens)
 
     if endpoint == "cost_effectiveness":
+        # ClusterFree: effect size is a truncated-normal (median, sd) -> MC bands.
         overrides = _overrides(params)
         overrides["n_patients"] = int(float(params.get("ce_n", 8000)))
         kw = dict(
-            annual_budget=float(params.get("annual_budget", 250000)),
+            annual_budget=float(params.get("annual_budget", 100000)),
             patients_reached=float(params.get("patients_reached", 500)),
             effect_size_mean=float(params.get("effect_size_mean", 0.6)),
+            effect_size_sd=float(params.get("effect_size_sd", 0.15)),
+            n_mc=int(float(params.get("n_mc", 5000))),
         )
         # Always model both channels reached; beneficiaries follow the simulated
         # episodic/chronic mix (channel="both", share=None).
-        return cost_effectiveness(**kw, **overrides)
+        return cost_effectiveness_bands(**kw, **overrides)
 
     if endpoint == "cost_effectiveness_funnel":
         overrides = _overrides(params)
         overrides["n_patients"] = int(float(params.get("ce_n", 8000)))
 
-        def rng(name, dlo, dhi):
-            return (float(params.get(f"{name}_lo", dlo)),
-                    float(params.get(f"{name}_hi", dhi)))
+        def gauss(name, dmean, dsd):  # (median, sd) truncated-normal factor
+            return (float(params.get(f"{name}_mean", dmean)),
+                    float(params.get(f"{name}_sd", dsd)))
 
         kw = dict(
-            annual_budget=float(params.get("annual_budget", 250000)),
+            annual_budget=float(params.get("annual_budget", 100000)),
             annual_unique_visitors=float(params.get("annual_unique_visitors", 8000)),
-            patient_fraction=rng("patient_fraction", 0.45, 0.70),
-            engaged_fraction=rng("engaged_fraction", 0.25, 0.50),
-            adoption_fraction=rng("adoption_fraction", 0.05, 0.20),
-            additionality=rng("additionality", 0.30, 0.70),
-            clinical_capture=rng("clinical_capture", 0.50, 0.85),
+            patient_fraction=gauss("patient_fraction", 0.575, 0.0625),
+            engaged_fraction=gauss("engaged_fraction", 0.375, 0.0625),
+            adoption_fraction=gauss("adoption_fraction", 0.125, 0.0375),
+            counterfactual_share=gauss("counterfactual_share", 0.50, 0.10),
+            clinical_capture=gauss("clinical_capture", 0.675, 0.0875),
             n_mc=int(float(params.get("n_mc", 5000))),
         )
         return cost_effectiveness_funnel(**kw, **overrides)

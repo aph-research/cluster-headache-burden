@@ -556,18 +556,24 @@ def counterfactual_csv(cfg: Config | None = None, **overrides) -> str:
     return buf.getvalue()
 
 
-def cost_effectiveness(cfg: Config | None = None, *, annual_budget: float = 250_000.0,
+def cost_effectiveness(cfg: Config | None = None, *, annual_budget: float = 100_000.0,
                        patients_reached: float = 500.0, channel: str = "both",
                        effect_size_mean: float = 0.6,
                        beneficiary_episodic_share: float | None = None,
                        **overrides) -> dict:
     """End-to-end cost-effectiveness of helping CH patients reach treatment.
 
-    Model: each beneficiary captures, on average, `effect_size_mean` of the full
-    no-treatment -> full-access benefit for the chosen `channel`. This single mean
-    absorbs the new-access/upgrade blend AND additionality (if independent of the
-    patient, only the mean affects totals). `beneficiary_episodic_share` lets you
-    model targeting (None = use the simulated population mix).
+    Model: each beneficiary captures, on average, `effect_size_mean` (= clinical
+    capture) of the full no-treatment -> full-access benefit for the chosen
+    `channel`. `patients_reached` is a COUNTERFACTUAL adopter count (people who got
+    treated because of you and would not have otherwise); the "would-have-anyway"
+    discount therefore lives in `patients_reached`, NOT in `effect_size_mean`.
+    `beneficiary_episodic_share` lets you model targeting (None = population mix).
+
+    NB: the per-patient `full_benefit` is measured against a fully-UNTREATED
+    baseline, so `patients_reached` must be currently-untreated patients. Pushing
+    reached toward the whole population with effect_size_mean ~1 measures against
+    the untreated-world burden, which exceeds today's partly-treated burden.
 
         total_averted = patients_reached * effect_size_mean * mean(full_benefit)
         cost-effectiveness = annual_budget / total_averted
@@ -616,58 +622,14 @@ def cost_effectiveness(cfg: Config | None = None, *, annual_budget: float = 250_
 
 
 # --------------------------------------------------------------------------- #
-#  Reach funnel: build patients_reached & effect_size_mean from metrics       #
+#  Monte-Carlo band helpers (uncertainty propagation)                         #
 # --------------------------------------------------------------------------- #
-FUNNEL_FACTORS = ("patient_fraction", "engaged_fraction", "adoption_fraction")
-EFFECT_FACTORS = ("additionality", "clinical_capture")
-
-
-def cost_effectiveness_funnel(
-        cfg: Config | None = None, *, annual_budget: float = 250_000.0,
-        annual_unique_visitors: float = 8_000.0,
-        # each factor is a (low, high) range; Monte-Carlo-sampled uniformly
-        patient_fraction: tuple = (0.45, 0.70),
-        engaged_fraction: tuple = (0.25, 0.50),
-        adoption_fraction: tuple = (0.05, 0.20),
-        additionality: tuple = (0.30, 0.70),
-        clinical_capture: tuple = (0.50, 0.85),
-        channel: str = "both",
-        beneficiary_episodic_share: float | None = None,
-        n_mc: int = 5_000,
-        **overrides) -> dict:
-    """Cost-effectiveness where `patients_reached` and `effect_size_mean` are BUILT
-    UP from observable funnel factors (each an uncertainty range) instead of typed
-    in as point values. Propagates the ranges by Monte Carlo and returns p10/p50/p90
-    bands for every output.
-
-        patients_reached  = annual_unique_visitors
-                            x patient_fraction    (P visitor is a CH patient)
-                            x engaged_fraction    (P engaged | patient)
-                            x adoption_fraction   (P tries a treatment | engaged)
-        effect_size_mean  = additionality         (counterfactual: not "anyway")
-                            x clinical_capture     (realized share of full benefit)
-
-    patients_reached is a GROSS adopter count (no additionality discount); the
-    "would-have-anyway" discount lives in effect_size_mean, matching
-    cost_effectiveness(). The sim is run ONCE for the per-patient full benefit;
-    outputs scale linearly in patients_reached x effect_size_mean, so the whole
-    range is propagated cheaply.
-
-    Funnel-factor sources: annual_unique_visitors and *_fraction come from PostHog
-    (uniques, patient share via referrer mix, engagement via scroll/dwell/opens,
-    adoption anchored by prints/return-visits or an opt-in follow-up cohort);
-    additionality and clinical_capture come from the website survey (Q3, and
-    Q7-Q9 severe-attack reduction)."""
-    cfg = cfg or Config()
-    if overrides:
-        cfg = replace(cfg, **overrides)
-    if channel not in CF_CHANNELS:
-        raise ValueError(f"channel must be one of {CF_CHANNELS}")
-
+def _per_patient_benefit(cfg, channel, beneficiary_episodic_share):
+    """Mean per-(untreated)-patient averted {attacks,severe,min,dles} for `channel`."""
     d = _counterfactual(cfg)
     ep = d["is_episodic"]
 
-    def per_patient(metric):
+    def pp(metric):
         arr = d[f"{channel}_{metric}"]
         if beneficiary_episodic_share is None:
             return float(arr.mean())
@@ -676,62 +638,155 @@ def cost_effectiveness_funnel(
         mc = float(arr[~ep].mean()) if (~ep).any() else 0.0
         return s * me + (1.0 - s) * mc
 
-    pp = {m: per_patient(m) for m in
-          ("attacks_averted", "severe_averted", "min_averted", "dles_averted")}
+    return {m: pp(m) for m in
+            ("attacks_averted", "severe_averted", "min_averted", "dles_averted")}
 
-    rng = np.random.default_rng(cfg.seed + 404)
 
-    def draw(r):
-        lo, hi = float(r[0]), float(r[1])
-        return rng.uniform(min(lo, hi), max(lo, hi), n_mc)
+def _trunc_normal(rng, mean, sd, n, lo=0.0, hi=1.0):
+    """n draws from Normal(mean, sd) clipped to [lo, hi] (a simple truncated normal)."""
+    return np.clip(rng.normal(float(mean), max(float(sd), 0.0), n), lo, hi)
 
-    reached = (annual_unique_visitors * draw(patient_fraction)
-               * draw(engaged_fraction) * draw(adoption_fraction))
-    eff = draw(additionality) * draw(clinical_capture)
-    f = reached * eff                       # per-draw scalar multiplier
 
-    def bands(x):
-        p10, p50, p90 = np.percentile(x, [10, 50, 90])
-        return {"p10": float(p10), "p50": float(p50), "p90": float(p90),
-                "mean": float(x.mean())}
+def _bands(x):
+    p10, p50, p90 = np.percentile(x, [10, 50, 90])
+    return {"p10": float(p10), "p50": float(p50), "p90": float(p90),
+            "mean": float(np.mean(x))}
 
-    def cost_bands(averted):
-        # averted > 0 for all draws (positive factors), so cost = budget/averted
-        c = annual_budget / averted
-        # high averted -> low cost: percentiles flip
-        p90c, p50c, p10c = np.percentile(c, [10, 50, 90])
-        return {"p10": float(p10c), "p50": float(p50c), "p90": float(p90c),
-                "mean": float(c.mean())}
 
+def _metric_bands(pp, f, annual_budget):
+    """Given per-patient benefit `pp` and a per-draw multiplier array `f`, build
+    output+cost bands for all four metrics. Cost percentiles are flipped so p10 is
+    pessimistic (expensive) and p90 optimistic (cheap)."""
     metrics = {
         "attacks_averted": pp["attacks_averted"] * f,
         "severe_attacks_averted": pp["severe_averted"] * f,
         "attack_hours_averted": pp["min_averted"] * f / 60.0,
         "dles_averted": pp["dles_averted"] * f,
     }
-    return {
+    ckey = {"attacks_averted": "cost_per_attack",
+            "severe_attacks_averted": "cost_per_severe_attack",
+            "attack_hours_averted": "cost_per_attack_hour",
+            "dles_averted": "cost_per_dles"}
+    out = {}
+    for k, arr in metrics.items():
+        out[k] = _bands(arr)
+        c = np.where(arr > 0, annual_budget / np.where(arr > 0, arr, 1.0), np.nan)
+        # higher averted -> lower cost, so the 90th pct of cost is the pessimistic p10
+        p90c, p50c, p10c = np.nanpercentile(c, [10, 50, 90])
+        out[ckey[k]] = {"p10": float(p10c), "p50": float(p50c), "p90": float(p90c),
+                        "mean": float(np.nanmean(c))}
+    return out
+
+
+def cost_effectiveness_bands(cfg: Config | None = None, *, annual_budget: float = 100_000.0,
+                             patients_reached: float = 500.0,
+                             effect_size_mean: float = 0.6, effect_size_sd: float = 0.15,
+                             channel: str = "both",
+                             beneficiary_episodic_share: float | None = None,
+                             n_mc: int = 5_000, **overrides) -> dict:
+    """Like cost_effectiveness(), but the effect size is a truncated normal (median
+    `effect_size_mean`, spread `effect_size_sd`, clipped to [0,1]) instead of a
+    point value. `patients_reached` stays a point input. Propagates the effect-size
+    uncertainty by Monte Carlo and returns p10/p50/p90 bands for every output."""
+    cfg = cfg or Config()
+    if overrides:
+        cfg = replace(cfg, **overrides)
+    if channel not in CF_CHANNELS:
+        raise ValueError(f"channel must be one of {CF_CHANNELS}")
+    pp = _per_patient_benefit(cfg, channel, beneficiary_episodic_share)
+    rng = np.random.default_rng(cfg.seed + 505)
+    eff = _trunc_normal(rng, effect_size_mean, effect_size_sd, n_mc)
+    out = _metric_bands(pp, patients_reached * eff, annual_budget)
+    out.update({
+        "annual_budget": annual_budget, "patients_reached": patients_reached,
+        "channel": channel, "n_mc": n_mc,
+        "beneficiary_episodic_share": beneficiary_episodic_share,
+        "effect_size_mean": _bands(eff),
+    })
+    return out
+
+
+# --------------------------------------------------------------------------- #
+#  Reach funnel: build patients_reached & effect_size_mean from metrics       #
+# --------------------------------------------------------------------------- #
+FUNNEL_FACTORS = ("patient_fraction", "engaged_fraction", "adoption_fraction",
+                  "counterfactual_share")
+EFFECT_FACTORS = ("clinical_capture",)
+
+
+def cost_effectiveness_funnel(
+        cfg: Config | None = None, *, annual_budget: float = 100_000.0,
+        annual_unique_visitors: float = 8_000.0,
+        # each factor is a (median, sd) truncated normal, clipped to [0, 1]
+        patient_fraction: tuple = (0.575, 0.0625),
+        engaged_fraction: tuple = (0.375, 0.0625),
+        adoption_fraction: tuple = (0.125, 0.0375),
+        counterfactual_share: tuple = (0.50, 0.10),
+        clinical_capture: tuple = (0.675, 0.0875),
+        channel: str = "both",
+        beneficiary_episodic_share: float | None = None,
+        n_mc: int = 5_000,
+        **overrides) -> dict:
+    """Cost-effectiveness where `patients_reached` and `effect_size_mean` are BUILT
+    UP from observable funnel factors (each a median+spread uncertainty) instead of
+    typed in as point values. Each factor is a truncated normal (median, sd) clipped
+    to [0, 1]; the ranges are propagated by Monte Carlo, returning p10/p50/p90 bands.
+
+        patients_reached  = annual_unique_visitors
+                            x patient_fraction        (P visitor is a CH patient)
+                            x engaged_fraction        (P engaged | patient)
+                            x adoption_fraction       (P tries a treatment | engaged)
+                            x counterfactual_share    (would NOT have happened anyway)
+        effect_size_mean  = clinical_capture          (realized share of full benefit)
+
+    `patients_reached` is thus a COUNTERFACTUAL adopter count (people who tried a
+    treatment because of us and would not have otherwise). `effect_size_mean` is
+    then purely clinical_capture: of the full no-treatment -> full-access benefit,
+    the share those adopters actually realize. Placing the counterfactual discount
+    in reach (vs effect size) is an arbitrary but tidy choice; the product is what
+    matters, and it must appear on exactly one side. The sim runs ONCE for the
+    per-patient full benefit; outputs scale linearly in reach x effect, so the
+    whole range is propagated cheaply.
+
+    Funnel-factor sources: annual_unique_visitors and *_fraction come from PostHog
+    (uniques, patient share via referrer mix, engagement via scroll/dwell/opens,
+    adoption anchored by prints/return-visits or an opt-in follow-up cohort);
+    counterfactual_share and clinical_capture come from the website survey (Q3, and
+    Q7-Q9 severe-attack reduction)."""
+    cfg = cfg or Config()
+    if overrides:
+        cfg = replace(cfg, **overrides)
+    if channel not in CF_CHANNELS:
+        raise ValueError(f"channel must be one of {CF_CHANNELS}")
+
+    pp = _per_patient_benefit(cfg, channel, beneficiary_episodic_share)
+    rng = np.random.default_rng(cfg.seed + 404)
+
+    def draw(r):
+        return _trunc_normal(rng, r[0], r[1], n_mc)
+
+    reached = (annual_unique_visitors * draw(patient_fraction)
+               * draw(engaged_fraction) * draw(adoption_fraction)
+               * draw(counterfactual_share))
+    eff = draw(clinical_capture)
+
+    out = _metric_bands(pp, reached * eff, annual_budget)
+    out.update({
         "annual_budget": annual_budget,
         "annual_unique_visitors": annual_unique_visitors,
         "channel": channel, "n_mc": n_mc,
         "beneficiary_episodic_share": beneficiary_episodic_share,
-        "patients_reached": bands(reached),
-        "effect_size_mean": bands(eff),
-        "attacks_averted": bands(metrics["attacks_averted"]),
-        "severe_attacks_averted": bands(metrics["severe_attacks_averted"]),
-        "attack_hours_averted": bands(metrics["attack_hours_averted"]),
-        "dles_averted": bands(metrics["dles_averted"]),
-        "cost_per_attack": cost_bands(metrics["attacks_averted"]),
-        "cost_per_severe_attack": cost_bands(metrics["severe_attacks_averted"]),
-        "cost_per_attack_hour": cost_bands(metrics["attack_hours_averted"]),
-        "cost_per_dles": cost_bands(metrics["dles_averted"]),
+        "patients_reached": _bands(reached),
+        "effect_size_mean": _bands(eff),
         "factors": {
             "patient_fraction": list(patient_fraction),
             "engaged_fraction": list(engaged_fraction),
             "adoption_fraction": list(adoption_fraction),
-            "additionality": list(additionality),
+            "counterfactual_share": list(counterfactual_share),
             "clinical_capture": list(clinical_capture),
         },
-    }
+    })
+    return out
 
 
 # --------------------------------------------------------------------------- #
@@ -742,12 +797,12 @@ if __name__ == "__main__":
     for k, v in res.summary().items():
         print(f"  {k:38s}: {v:,.3f}" if isinstance(v, float) else f"  {k:38s}: {v:,}")
 
-    print("\n--- Global attacks/yr by PEAK intensity ---")
+    print("\n--- Global attacks/yr by peak intensity ---")
     d = res.intensity_distribution("attacks")
     for i, c in enumerate(d, 1):
         print(f"  {i:2d}: {c:>15,.0f}  ({100*c/d.sum():4.1f}%)")
 
-    print("\n--- Global person-years/yr spent AT each intensity (within-attack profile) ---")
+    print("\n--- Global person-years/yr spent at each intensity (within-attack profile) ---")
     tal = res.time_at_levels() / 60 / 24 / 365
     for i, c in enumerate(tal, 1):
         print(f"  {i:2d}: {c:>12,.0f} person-yr  ({100*c/tal.sum():4.1f}%)")
