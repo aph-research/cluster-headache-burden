@@ -720,7 +720,7 @@ def cost_effectiveness_funnel(
         # each factor is a (median, sd) truncated normal, clipped to [0, 1]
         patient_fraction: tuple = (0.75, 0.10),
         engaged_fraction: tuple = (0.30, 0.10),
-        adoption_fraction: tuple = (0.12, 0.06),
+        adoption_fraction: tuple = (0.25, 0.10),
         counterfactual_share: tuple = (0.50, 0.12),
         clinical_capture: tuple = (0.50, 0.13),
         channel: str = "both",
