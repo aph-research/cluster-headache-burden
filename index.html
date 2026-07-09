@@ -93,7 +93,7 @@
           aria-expanded="true" title="Show/hide levers">‹</button>
   <aside id="panel"></aside>
   <main>
-    <h2 class="sec-h">Global statistics</h2>
+    <h2 class="sec-h">Global burden statistics</h2>
     <div class="cards" id="cards"></div>
     <div class="charts">
       <div class="chart" id="c_peak"></div>
@@ -159,7 +159,7 @@
         <strong style="font-size:12px">Metric:</strong>
         <select id="sensMetric">
           <option value="global_person_years_at_ge9">Person-years at ≥9/10</option>
-          <option value="global_person_days_at_ge9">Person-days at ≥9/10</option>
+          <option value="global_person_days_at_ge9">Person-days at ≥9/10 (DLES)</option>
           <option value="global_person_years_in_attack">Person-years in attack (all)</option>
         </select>
         <button id="sensBtn">Run sensitivity ▶</button>
@@ -191,7 +191,7 @@ const TIPS = {
   annual_prevalence_per_100k:"How many adults out of every 100,000 have cluster headache in a given year. Default 53 comes from a large pooled study (Fischera 2007); across the world's ~5.8B adults that works out to ~3.07M sufferers in a year.",
   episodic_fraction:"Fraction of patients whose attacks come in bouts with long pain-free gaps (episodic), vs. those who attack nearly year-round (chronic). Studies put ~80–90% in the episodic group (Wei 2018).",
   n_patients:"How many simulated patients to generate each run.",
-  treatment_access_fraction:"Share of sufferers worldwide who can actually get an effective abortive / acute treatment, e.g. oxygen or a triptan that stops an attack already underway. Built up from rich (~55%), middle (~12%) and low-income (~3%) countries, population-weighted to ~0.18 (Rossi 2020; WHO).",
+  treatment_access_fraction:"Share of sufferers worldwide who can actually get an effective abortive / acute treatment, e.g. oxygen or a triptan. Built up from rich (~55%), middle (~12%) and low-income (~3%) countries, population-weighted (Rossi 2020; WHO).",
   abort_prob_mean:"For someone who has an acute treatment, the average chance it actually works on an attack. Pooled from a large patient survey (Rusanen 2022): oxygen 65%, triptans 64% → ~0.64.",
   treat_fraction:"Of all the attacks a patient with access has, the share they actually bother to treat. Around 85%; the mildest attacks are often left alone (Snoer).",
   aborted_duration_mean_min:"How long an attack lasts when the acute treatment successfully stops it (minutes from onset to pain-free). Injected sumatriptan acts within minutes; oxygen typically brings relief within about 15 minutes (Cohen 2009).",
@@ -472,7 +472,7 @@ function draw(r){
     ["Attacks / yr (global)", Math.round(s.global_attacks_per_year).toLocaleString()],
     ["Person-yrs in attack", fmt(s.global_person_years_in_attack)],
     ["Person-yrs at ≥9/10", fmt(s.global_person_years_at_ge9)],
-    ["Person-days at ≥9/10", Math.round(s.global_person_days_at_ge9).toLocaleString()],
+    ["Person-days at ≥9/10 (DLES)", Math.round(s.global_person_days_at_ge9).toLocaleString()],
     ["Mean attacks/yr", Math.round(s.attacks_per_year_mean).toLocaleString()],
     ["Median attacks/yr", Math.round(s.attacks_per_year_median).toLocaleString()],
     ["Mean peak intensity", s.attack_intensity_mean.toFixed(2)],
