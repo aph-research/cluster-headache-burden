@@ -43,12 +43,22 @@ a rewrite in `vercel.json` (or `next.config.js` `rewrites`):
 { "rewrites": [{ "source": "/burden", "destination": "/burden/index.html" }] }
 ```
 
-### Keeping the deployed copy in sync
+### How clusterfree.org/model actually does it
 
-The three files are the *entire* deployable bundle. When you change the model or
-UI in this repo, re-copy them into `public/burden/`. A simple script or a small
-CI step in the Next.js repo can `curl` them from this repo's raw GitHub URLs so
-you never hand-copy.
+The live deployment (`aph-research/clusterfree`, a Next.js site on Vercel) keeps
+this repo as the single source of truth and pulls the three files at build time:
+
+- `scripts/fetch-model.mjs` downloads `index.html`, `ch_simulation.py`, and
+  `webapi.py` from this repo's raw `main` URLs into `public/model/` (run by a
+  `prebuild` npm script, and `public/model/` is git-ignored).
+- `next.config.js` has a **rewrite** `/model` -> `/model/index.html` so the page
+  lives at the clean URL `clusterfree.org/model` (a rewrite, not a redirect, to
+  avoid a loop with Next's trailing-slash stripping).
+- `index.html` resolves its sibling assets relative to its own directory (see the
+  `BASE` constant), so it works served at `/`, `/model`, or `/model/`.
+
+To ship a change: edit here, commit and push to `main`, then redeploy the
+clusterfree site (any deploy re-fetches the latest).
 
 ## Notes / caveats
 
@@ -56,9 +66,12 @@ you never hand-copy.
   it's browser-cached. Subsequent loads are quick. Each simulation runs in a
   couple of seconds in WASM; the Sensitivity tornado uses a smaller sample size
   in-browser (3000 vs 6000 patients) to stay responsive.
-- **Content-Security-Policy:** if clusterfree.org sets a strict CSP, allow
-  `cdn.jsdelivr.net` in `script-src` (and WASM: add `'wasm-unsafe-eval'` to
-  `script-src`). Without this the browser will block Pyodide.
+- **Content-Security-Policy:** if the host sets a strict CSP, `script-src` must
+  allow `https://cdn.plot.ly` (Plotly) and `https://cdn.jsdelivr.net` (Pyodide),
+  and `connect-src` must allow `https://cdn.jsdelivr.net` (Pyodide fetches its
+  WASM/packages). WASM also needs `'unsafe-eval'` or `'wasm-unsafe-eval'` in
+  `script-src`. On clusterfree these are scoped to `/model` in `src/middleware.ts`.
+  Without them the browser blocks the charts and/or the Python runtime.
 - **Pyodide version** is pinned in `index.html` (`PYODIDE_BASE`, currently
   v0.26.4). Bump it there if you want a newer runtime.
 - The CSV export is generated in-browser (a Blob download) in static mode, and

@@ -85,7 +85,7 @@
 <body>
 <header>
   <h1>Cluster Headache: Burden and Cost-Effectiveness Model
-    <span id="status" class="status">loading…</span></h1>
+    <span id="status" class="status">Loading…</span></h1>
   <p>A Monte Carlo model of the global burden of cluster headache, used to estimate the cost-effectiveness of ClusterFree.</p>
 </header>
 <div class="wrap">
@@ -164,7 +164,7 @@
         </select>
         <button id="sensBtn">Run sensitivity ▶</button>
         <span id="sensStatus" class="status"></span>
-        <span style="font-size:11px;color:var(--mut)">each lever swept across its literature-plausible range (not slider width), others held at current values</span>
+        <span style="font-size:11px;color:var(--mut)">Each lever swept across its literature-plausible range (not slider width), others held at current values</span>
       </div>
       <div id="c_tornado" style="min-height:420px"></div>
     </div>
@@ -246,16 +246,21 @@ const dark = {paper_bgcolor:"#181b22",plot_bgcolor:"#181b22",
 // served under /burden/ as static files -> the probe 404s -> Pyodide.
 let API_MODE=null, _cfgCache=null, pyodide=null;
 const PYODIDE_BASE="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/";
+// Directory the page is served from, so relative API/asset URLs resolve the same
+// whether it is hosted at "/" (local server), "/model/" (trailing slash), or
+// "/model" (no slash, via a rewrite). Without this, "/model" would resolve
+// "api/config" to the site root and break the Pyodide file loads.
+const BASE=(p=>p.endsWith("/")?p:/\.[^/]+$/.test(p)?p.replace(/[^/]*$/,""):p+"/")(location.pathname);
 function loadScript(src){ return new Promise((ok,err)=>{
   const s=document.createElement("script"); s.src=src; s.onload=ok; s.onerror=err;
   document.head.appendChild(s); }); }
 async function initPyodide(){
-  $("#status").textContent="loading Python (first visit, ~10–20s)…";
+  $("#status").textContent="Loading (may take a few seconds)…";
   if(!window.loadPyodide) await loadScript(PYODIDE_BASE+"pyodide.js");
   pyodide=await loadPyodide({indexURL:PYODIDE_BASE});
   await pyodide.loadPackage("numpy");
   for(const f of ["ch_simulation.py","webapi.py"]){
-    pyodide.FS.writeFile(f, await (await fetch(f)).text());
+    pyodide.FS.writeFile(f, await (await fetch(BASE+f)).text());
   }
   pyodide.runPython(`
 import json, webapi
@@ -267,7 +272,7 @@ def _js_dispatch(endpoint, params_json):
 async function ensureMode(){
   if(API_MODE) return API_MODE;
   try{
-    const r=await fetch("api/config",{cache:"no-store"});
+    const r=await fetch(BASE+"api/config",{cache:"no-store"});
     if(r.ok){ _cfgCache=await r.json(); return (API_MODE="server"); }
     throw 0;
   }catch(e){ await initPyodide(); return (API_MODE="pyodide"); }
@@ -277,7 +282,7 @@ async function api(endpoint, params){
   if(API_MODE==="server"){
     if(endpoint==="config" && _cfgCache) return _cfgCache;
     const qs=new URLSearchParams(params||{}).toString();
-    const r=await fetch(`api/${endpoint}${qs?"?"+qs:""}`);
+    const r=await fetch(`${BASE}api/${endpoint}${qs?"?"+qs:""}`);
     const j=await r.json();
     if(!r.ok || j.error) throw new Error(j.error || ("HTTP "+r.status));
     return j;
@@ -287,7 +292,7 @@ async function api(endpoint, params){
 async function apiCSV(endpoint, params, filename){
   await ensureMode();
   if(API_MODE==="server"){
-    window.location.href=`api/${endpoint}?`+new URLSearchParams(params||{}).toString();
+    window.location.href=`${BASE}api/${endpoint}?`+new URLSearchParams(params||{}).toString();
     return;
   }
   const csv=pyodide.globals.get("_js_dispatch")(endpoint, JSON.stringify(params||{}));
@@ -382,11 +387,11 @@ async function init(){
 let timer=null;
 function schedule(){ clearTimeout(timer); timer=setTimeout(run,250); }
 async function run(){
-  $("#status").textContent="running…";
+  $("#status").textContent="Running…";
   try{
     const r=await api("simulate", state);
-    draw(r); $("#status").textContent="done."; runCF(); runCI();
-  }catch(e){ $("#status").textContent="error: "+e.message; }
+    draw(r); $("#status").textContent="Done."; runCF(); runCI();
+  }catch(e){ $("#status").textContent="Error: "+e.message; }
 }
 // shared card order: general -> specific (all attacks, then severe/extreme), each
 // quantity followed by its cost. Used by BOTH cost-effectiveness sections.
@@ -443,7 +448,7 @@ async function runCF(){
     r=await api("cost_effectiveness", {...state,
       annual_budget:uncomma($("#ce_budget").value), patients_reached:uncomma($("#ce_reached").value),
       effect_size_mean:$("#ce_eff_mean").value, effect_size_sd:$("#ce_eff_sd").value});
-  }catch(e){ $("#ceStatus").textContent="error: "+e.message; return; }
+  }catch(e){ $("#ceStatus").textContent="Error: "+e.message; return; }
   renderCEcards("ceCards","ceCardsSev", r, true);
   $("#ceStatus").textContent="";
 }
@@ -456,7 +461,7 @@ async function runCI(){
     .forEach(k=>{ p[k+"_mean"]=$("#fun_"+k+"_mean").value; p[k+"_sd"]=$("#fun_"+k+"_sd").value; });
   let r;
   try{ r=await api("cost_effectiveness_funnel", p); }
-  catch(e){ $("#ciStatus").textContent="error: "+e.message; return; }
+  catch(e){ $("#ciStatus").textContent="Error: "+e.message; return; }
   renderCEcards("ciCards","ciCardsSev", r, true);
   const pr=r.patients_reached;
   const rnd=n=>Math.round(n).toLocaleString();
@@ -497,11 +502,11 @@ async function runSensitivity(){
   const metric=$("#sensMetric").value;
   const mode=await ensureMode();
   const n_sens = mode==="pyodide" ? 3000 : 6000;
-  $("#sensStatus").textContent = mode==="pyodide" ? "running in-browser (~20–40s)…" : "running ~40 sims…";
+  $("#sensStatus").textContent = mode==="pyodide" ? "Running in-browser (~20–40s)…" : "Running ~40 sims…";
   try{
     const r=await api("sensitivity", {...state, metric, n_sens});
-    drawTornado(r); $("#sensStatus").textContent=`done (base = ${fmt(r.base)})`;
-  }catch(e){ $("#sensStatus").textContent="error: "+e.message; }
+    drawTornado(r); $("#sensStatus").textContent=`Done (base = ${fmt(r.base)})`;
+  }catch(e){ $("#sensStatus").textContent="Error: "+e.message; }
 }
 function drawTornado(r){
   // biggest span first -> put at top (reverse for Plotly bottom-up order)
