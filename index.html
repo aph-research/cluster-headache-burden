@@ -178,18 +178,18 @@ const TIPS = {
   treatment_access_fraction:"Share of sufferers worldwide who can actually get an effective abortive / acute treatment, e.g. oxygen or a triptan that stops an attack already underway. Built up from rich (~55%), middle (~12%) and low-income (~3%) countries, population-weighted to ~0.18 (Rossi 2020; WHO).",
   abort_prob_mean:"For someone who has an acute treatment, the average chance it actually works on an attack. Pooled from a large patient survey (Rusanen 2022): oxygen 65%, triptans 64% → ~0.64.",
   treat_fraction:"Of all the attacks a patient with access has, the share they actually bother to treat. Around 85%; the mildest attacks are often left alone (Snoer).",
-  aborted_duration_mean_min:"How long an attack lasts when the acute treatment successfully stops it (minutes from onset to pain-free). Injected sumatriptan acts within minutes; oxygen leaves ~78% pain-free by 15 min (Cohen 2009).",
+  aborted_duration_mean_min:"How long an attack lasts when the acute treatment successfully stops it (minutes from onset to pain-free). Injected sumatriptan acts within minutes; oxygen typically brings relief within about 15 minutes (Cohen 2009).",
   treated_peak_intensity_reduction:"How much the acute treatment lowers an attack's worst (peak) pain. Default 0: the peak is reached (~9 min in) before the drug kicks in, so treated and untreated peaks are about equal (Snoer 2019).",
-  preventive_access_fraction:"Share of sufferers on an effective preventive, i.e. a daily medication (e.g. verapamil) that reduces how often attacks happen. Built up the same way as acute access; cheap generics help, but long diagnostic delays hold it to ~0.23.",
+  preventive_access_fraction:"Share of sufferers on an effective preventive, i.e. a daily medication (e.g. verapamil) that reduces how often attacks happen. Built up the same way as acute access.",
   preventive_responder_mean:"For someone taking a preventive, the average chance it meaningfully helps them. Pooled from a patient survey (Rusanen 2022): verapamil 50%, steroids 55%, lithium 31%, others ~25% → ~0.42.",
-  preventive_responder_reduction_mean:"For the people a preventive helps, the average drop in how many attacks they get. Someone counts as 'helped' only if attacks fall by at least half, so the average drop is a bit above 50% (verapamil and antibody trials).",
-  preventive_responder_reduction_sd:"How much that attack-reduction varies from person to person among those the preventive helps. Values are kept between 50% and 95%.",
+  preventive_responder_reduction_mean:"For the people a preventive helps, the average drop in how many attacks they get. In the trials and surveys behind this, a person only counts as helped ('responder') if attacks fall by at least half, so the average drop among them sits somewhat above 50%.",
+  preventive_responder_reduction_sd:"How much the attack reduction varies from person to person among those the preventive helps.",
   intensity_mean:"Average worst-pain rating of an attack on a 1–10 scale. Diary studies where patients rate attacks as they happen give ~7 (Snoer), not the commonly-cited '9.7/10' figure, which is people evaluating CH pain generally.",
   intensity_between_sd:"How much patients differ from one another in their typical attack pain. Set larger than the within-patient spread below, because studies suggest most variation is between people, not within one person (Snoer).",
   intensity_within_sd:"How much a single patient's own attacks vary in pain around their personal average. Kept small, since one person's attacks tend to be fairly similar to each other.",
   duration_median_min:"Typical length of an untreated attack, in minutes (half last longer, half shorter). Diary data give a mean ~39 min; the diagnostic definition allows 15–180 min.",
   duration_sigma:"How lopsided the spread of attack lengths is: higher values mean more very-long attacks stretching toward 180+ min. A modelling choice.",
-  dur_intensity_slope:"How much more intense attacks also tend to last longer. A study found this link (Russell 1981); the default is gentle (0.08). Set to 0 to switch the link off.",
+  dur_intensity_slope:"How much more intense attacks also tend to last longer. This is not a correlation coefficient but a per-point multiplier on duration: each 1 point of peak intensity above the average stretches an attack's typical length by this fraction (0.08 means +8% per point above average, and -8% per point below). A study found this link (Russell 1981); set to 0 to switch it off.",
   profile_rise_min:"How long an attack takes to climb from onset to its worst pain. About 9 minutes (Torelli 2003: 8.9 min, most within 9).",
   profile_decline_min:"How long an attack takes to fade from its worst pain back to nothing, about 20 minutes (Snoer 2018). Whatever time is left in between is spent near the peak.",
   e_attacks_per_day_mean:"For episodic patients, the average number of attacks per day while they are in an active bout. Around 1–3 across studies (median ~1; Vikelis 2016).",
@@ -467,7 +467,7 @@ function draw(r){
     {...dark,title:"Attacks/yr by peak intensity",xaxis:{title:"Peak pain intensity",dtick:1},yaxis:{title:"Attacks/yr",hoverformat:",.0f"}},{displayModeBar:false});
   const py=r.time_at_levels.map(m=>m/60/24/365);
   Plotly.react("c_level",[{x:lv,y:py,type:"bar",marker:{color:"#F85604"}}],
-    {...dark,title:"Person-years/yr spent at each intensity",xaxis:{title:"Pain intensity",dtick:1},yaxis:{title:"person-years",hoverformat:",.1f"}},
+    {...dark,title:"Person-years/yr spent at each intensity",xaxis:{title:"Pain intensity",dtick:1},yaxis:{title:"Person-years",hoverformat:",.1f"}},
     {displayModeBar:false});
   Plotly.react("c_tail",[{x:r.attacks_hist.centers,y:r.attacks_hist.counts,type:"bar",marker:{color:"#4aa3ff"}}],
     {...dark,title:"Attacks/yr per patient (long tail)",xaxis:{title:"Attacks/yr",type:"log",hoverformat:",.1f"},yaxis:{title:"# patients",hoverformat:",.0f"}},{displayModeBar:false});
