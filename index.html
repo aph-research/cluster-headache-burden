@@ -103,7 +103,7 @@
     </div>
 
     <h2 class="sec-h">Cost-effectiveness of ClusterFree
-      <span class="info" data-tip="The organization's TOTAL cost-effectiveness across all our initiatives combined (ClusterInfo, the open letters, and everything else). Enter the whole annual budget, the total counterfactual patients reached across all projects, and the effect size. For a single project's bottom-up estimate, see the ClusterInfo section below.">ⓘ</span>
+      <span class="info" data-tip="The organization's TOTAL cost-effectiveness across all our initiatives combined (ClusterInfo, the open letters, and everything else). Enter the whole annual budget, the total counterfactual patients helped across all projects, and the effect size. For a single project's bottom-up estimate, see the ClusterInfo section below.">ⓘ</span>
       <span id="ceStatus" style="font-size:11px;font-weight:400;color:var(--mut);margin-left:6px"></span></h2>
     <div class="chart full" id="cfPanel" style="min-height:0;padding:12px 14px">
       <div style="display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap;font-size:12px">
@@ -112,7 +112,7 @@
           <input id="ce_budget" type="text" inputmode="numeric" value="100,000" style="width:130px">
         </div>
         <div style="display:flex;flex-direction:column;gap:6px">
-          <span>Patients reached / yr <span class="info" data-tip="Total counterfactual patients reached per year across ALL initiatives: currently-untreated patients who got treated because of us and would not have otherwise.">ⓘ</span></span>
+          <span>Patients helped / yr <span class="info" data-tip="Total counterfactual patients helped per year across ALL initiatives: currently-untreated patients who got treated because of us and would not have otherwise.">ⓘ</span></span>
           <input id="ce_reached" type="text" inputmode="numeric" value="500" style="width:120px">
         </div>
         <div style="display:flex;flex-direction:column;gap:6px">
@@ -133,7 +133,7 @@
     </div>
 
     <h2 class="sec-h">Cost-effectiveness of ClusterInfo
-      <span class="info" data-tip="Cost-effectiveness of ClusterInfo.org specifically (one of our projects), with 'patients reached' and 'effect size' built bottom-up from its own metrics instead of typed in. Each factor is a median with a std dev; the model Monte-Carlo-samples them and the cards show median with a p10–p90 band. patients reached = annual unique visitors × patient share × engagement × adoption × counterfactual share.">ⓘ</span>
+      <span class="info" data-tip="Cost-effectiveness of ClusterInfo.org specifically (one of our projects), with 'patients helped' and 'effect size' built bottom-up from its own metrics instead of typed in. Each factor is a median with a std dev; the model Monte-Carlo-samples them and the cards show median with a p10–p90 band. patients helped = annual unique visitors × patient share × engagement × adoption × counterfactual share.">ⓘ</span>
       <span id="ciStatus" style="font-size:11px;font-weight:400;color:var(--mut);margin-left:6px"></span></h2>
     <div class="chart full" id="ciPanel" style="min-height:0;padding:12px 14px">
       <div style="font-size:11px;color:var(--mut);margin-bottom:10px">Reach &amp; effect estimated bottom-up from ClusterInfo's PostHog analytics and on-site survey.</div>
@@ -466,7 +466,7 @@ async function runCI(){
   const pr=r.patients_reached;
   const rnd=n=>Math.round(n).toLocaleString();
   $("#funnelImplied").innerHTML=
-    `Implied <b>counterfactual patients reached/yr</b>: ${rnd(pr.p50)} <span style="opacity:.7">(p10–p90: ${rnd(pr.p10)}–${rnd(pr.p90)})</span>`+
+    `Implied <b>counterfactual patients helped/yr</b>: ${rnd(pr.p50)} <span style="opacity:.7">(p10–p90: ${rnd(pr.p10)}–${rnd(pr.p90)})</span>`+
     ` &nbsp;·&nbsp; <span style="opacity:.7">${r.n_mc.toLocaleString()} draws</span>`;
   $("#ciStatus").textContent="";
 }
