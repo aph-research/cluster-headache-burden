@@ -164,7 +164,7 @@
         </select>
         <button id="sensBtn">Run sensitivity ▶</button>
         <span id="sensStatus" class="status"></span>
-        <span style="font-size:11px;color:var(--mut)">Each lever swept across its literature-plausible range (not slider width), others held at current values. A dotted stub bridges a bar to the base line when that lever is currently set outside its literature range.</span>
+        <span style="font-size:11px;color:var(--mut)">Each lever swept across its literature-plausible range (not slider width), others held at current values</span>
       </div>
       <div id="c_tornado" style="min-height:420px"></div>
     </div>
@@ -508,11 +508,11 @@ document.addEventListener("click", e=>{ if(e.target && e.target.id==="sensBtn") 
 async function runSensitivity(){
   const metric=$("#sensMetric").value;
   const mode=await ensureMode();
-  const n_sens = mode==="pyodide" ? 3000 : 6000;
-  $("#sensStatus").textContent = mode==="pyodide" ? "Running in-browser (~20–40s)…" : "Running ~40 sims…";
+  const n_sens = mode==="pyodide" ? 2000 : 4000;
+  $("#sensStatus").textContent = mode==="pyodide" ? "Running in-browser…" : "Running 45 sims…";
   try{
     const r=await api("sensitivity", {...state, metric, n_sens});
-    drawTornado(r); $("#sensStatus").textContent=`Done (base = ${fmt(r.base)})`;
+    drawTornado(r); $("#sensStatus").textContent="Done.";
   }catch(e){ $("#sensStatus").textContent="Error: "+e.message; }
 }
 function drawTornado(r){
@@ -528,7 +528,9 @@ function drawTornado(r){
       else line+=" "+w; } if(line.trim())out.push(line.trim()); return out.join("<br>"); };
   const hov=L.map(l=>{
     const tip=TIPS[l.lever]?wrap(TIPS[l.lever])+"<br><br>":"";
-    return `${tip}<b>${LABELS[l.lever]||l.lever}</b><br>low(${l.lo_set}) → ${fmt(l.low)}<br>high(${l.hi_set}) → ${fmt(l.high)}`;
+    const lo=Math.min(l.low,l.high), hi=Math.max(l.low,l.high);
+    const oor=(r.base<lo||r.base>hi)?"<br><br><b>Current slider value is outside its plausible literature range.</b>":"";
+    return `${tip}<b>${LABELS[l.lever]||l.lever}</b><br>low(${l.lo_set}) → ${fmt(l.low)}<br>high(${l.hi_set}) → ${fmt(l.high)}${oor}`;
   });
   const up=L.map(l=>l.high>=l.low); // direction: does raising the lever raise the metric?
   // When a lever's CURRENT value is outside its literature range, its bar lands
