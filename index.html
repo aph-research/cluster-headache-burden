@@ -287,6 +287,9 @@ async function api(endpoint, params){
     if(!r.ok || j.error) throw new Error(j.error || ("HTTP "+r.status));
     return j;
   }
+  // Pyodide's dispatch runs synchronously and blocks the main thread (no repaint
+  // while it computes), so let any pending status text ("Running…") paint first.
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
   return JSON.parse(pyodide.globals.get("_js_dispatch")(endpoint, JSON.stringify(params||{})));
 }
 async function apiCSV(endpoint, params, filename){
@@ -509,7 +512,7 @@ async function runSensitivity(){
   const metric=$("#sensMetric").value;
   const mode=await ensureMode();
   const n_sens = mode==="pyodide" ? 2000 : 4000;
-  $("#sensStatus").textContent = mode==="pyodide" ? "Running in-browser…" : "Running 45 sims…";
+  $("#sensStatus").textContent = "Running…";
   try{
     const r=await api("sensitivity", {...state, metric, n_sens});
     drawTornado(r); $("#sensStatus").textContent="Done.";
