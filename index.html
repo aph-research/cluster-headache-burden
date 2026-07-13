@@ -557,7 +557,7 @@ function drawTornado(r){
   Plotly.react("c_tornado",[{
       type:"bar", orientation:"h", y:names, x:span, base:base,
       marker:{color:up.map(u=>u?"#4F2AC4":"#F85604")},
-      hovertext:hov, hoverinfo:"text", showlegend:false
+      hovertext:hov, hoverinfo:"text", hoverlabel:{align:"left"}, showlegend:false
     }, ...connector, ...legend],
     {...dark, margin:{t:48,r:20,b:40,l:200}, height:Math.max(420, names.length*26+100),
      showlegend:true, legend:{orientation:"h", x:0, y:1.05, font:{size:10}},
