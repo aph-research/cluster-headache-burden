@@ -52,7 +52,7 @@ SLIDERS = {
     "e_bout_weeks_mean":          [1.0, 26.0, 0.5],
     "e_bouts_per_year_mean":      [0.3, 4.0, 0.1],
     "annual_prevalence_per_100k": [10.0, 150.0, 1.0],
-    "n_patients":                 [2000, 40000, 1000],
+    "n_patients":                 [2000, 16000, 1000],
 }
 
 
