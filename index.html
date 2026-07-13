@@ -117,7 +117,7 @@
         </div>
         <div style="display:flex;flex-direction:column;gap:6px">
           <span>Effect size <span class="info" data-tip="Of the full benefit of going from no treatment to both an acute (attack-stopping) and a preventive (frequency-lowering) treatment, the average share a beneficiary actually realizes. Effect size = 1 means they capture that full modeled benefit; it does NOT mean pain-free, since even then some attacks aren't caught (failed aborts, non-responders, only-partial frequency cuts). Modelled as a truncated normal (median + std dev) on [0,1].">ⓘ</span></span>
-          <span style="display:flex;gap:8px;align-items:center">
+          <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <label style="display:flex;flex-direction:column;gap:3px;color:var(--mut);align-items:flex-start">
               <input id="ce_eff_mean" type="number" value="0.60" min="0" max="1" step="0.01" style="width:64px">
               <span style="font-size:11px">Median</span></label>
@@ -357,7 +357,7 @@ async function init(){
       const el=document.createElement("div");
       el.style.cssText="display:flex;flex-direction:column;gap:6px;min-width:210px";
       el.innerHTML=`<span>${f.label} <span class="info" data-tip="${f.tip.replace(/"/g,'&quot;')}">ⓘ</span></span>
-        <span style="display:flex;gap:8px;align-items:center">
+        <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <label style="display:flex;flex-direction:column;gap:3px;color:var(--mut);align-items:flex-start">
             <input id="fun_${f.k}_mean" type="number" value="${f.mean}" min="0" max="1" step="0.01" style="width:64px">
             <span style="font-size:11px">Median</span></label>
@@ -494,17 +494,27 @@ function draw(r){
   ];
   $("#cards").innerHTML=cards.map(c=>`<div class="card"><div class="v">${c[1]}</div><div class="k">${c[0]}</div></div>`).join("");
   const lv=[1,2,3,4,5,6,7,8,9,10];
+  // Responsive chart chrome: smaller titles on phones so they don't clip left/right,
+  // and automargin so Plotly always reserves room for axis titles + (angled) labels.
+  const narrow=window.innerWidth<=760;
+  const tf=narrow?{size:11}:undefined;
+  const cfg={displayModeBar:false,responsive:true};
+  const ax=o=>({automargin:true,...o});
   Plotly.react("c_peak",[{x:lv,y:r.by_peak,type:"bar",marker:{color:"#4F2AC4"}}],
-    {...dark,title:"Attacks/yr by peak intensity",xaxis:{title:"Peak pain intensity",dtick:1},yaxis:{title:"Attacks/yr",hoverformat:",.0f"}},{displayModeBar:false,responsive:true});
+    {...dark,title:{text:"Attacks/yr by peak intensity",font:tf},
+     xaxis:ax({title:"Peak pain intensity",dtick:1}),yaxis:ax({title:"Attacks/yr",hoverformat:",.0f"})},cfg);
   const py=r.time_at_levels.map(m=>m/60/24/365);
   Plotly.react("c_level",[{x:lv,y:py,type:"bar",marker:{color:"#F85604"}}],
-    {...dark,title:"Person-years/yr spent at each intensity",xaxis:{title:"Pain intensity",dtick:1},yaxis:{title:"Person-years",hoverformat:",.1f"}},
-    {displayModeBar:false,responsive:true});
+    {...dark,title:{text:"Person-years/yr spent at each intensity",font:tf},
+     xaxis:ax({title:"Pain intensity",dtick:1}),yaxis:ax({title:"Person-years",hoverformat:",.1f"})},cfg);
   Plotly.react("c_tail",[{x:r.attacks_hist.centers,y:r.attacks_hist.counts,type:"bar",marker:{color:"#4aa3ff"}}],
-    {...dark,title:"Attacks/yr per patient (long tail)",xaxis:{title:"Attacks/yr",type:"log",hoverformat:",.1f"},yaxis:{title:"# patients",hoverformat:",.0f"}},{displayModeBar:false,responsive:true});
+    {...dark,title:{text:"Attacks/yr per patient (long tail)",font:tf},
+     xaxis:ax({title:"Attacks/yr",type:"log",hoverformat:",.1f"}),yaxis:ax({title:"# patients",hoverformat:",.0f"})},cfg);
   const g=r.burden_by_group.hours;
   Plotly.react("c_group",[{x:Object.keys(g),y:Object.values(g),type:"bar",marker:{color:"#37c98b"}}],
-    {...dark,title:"Mean hours/yr in attack per patient, by group",yaxis:{title:"Hours/yr",hoverformat:",.1f"}},{displayModeBar:false,responsive:true});
+    {...dark,title:{text:"Mean hours/yr in attack per patient, by group",font:tf},
+     xaxis:ax({tickangle:narrow?-40:undefined,tickfont:narrow?{size:9}:undefined}),
+     yaxis:ax({title:"Hours/yr",hoverformat:",.1f"})},cfg);
 }
 // ---- sensitivity / tornado ----
 document.addEventListener("click", e=>{ if(e.target && e.target.id==="sensBtn") runSensitivity(); });
@@ -518,22 +528,36 @@ async function runSensitivity(){
     drawTornado(r); $("#sensStatus").textContent="Done.";
   }catch(e){ $("#sensStatus").textContent="Error: "+e.message; }
 }
+// Each lever's help text becomes an ⓘ tooltip on its y-axis label, like the
+// sidebar. Plotly draws those labels as SVG, so after every render we tag them
+// with data-tip (keyed on the exact label text) and let the existing custom-
+// tooltip handler drive them. Re-runs on plotly_afterplot too (covers resizes).
+const INFO=" ⓘ";
+let _tornadoTips={}, _tornadoHooked=false, _lastTornado=null;
+function attachTornadoTips(){
+  // y-axis tick labels (wide layout) OR the per-bar annotations (narrow layout)
+  document.querySelectorAll("#c_tornado g.ytick text, #c_tornado g.annotation text").forEach(t=>{
+    const tip=_tornadoTips[t.textContent];
+    if(tip){ t.setAttribute("data-tip", tip); t.style.cursor="help"; t.style.pointerEvents="all"; }
+    else t.removeAttribute("data-tip");
+  });
+}
 function drawTornado(r){
+  _lastTornado=r;   // remember, so a resize across the mobile breakpoint can re-lay-out
   // biggest span first -> put at top (reverse for Plotly bottom-up order)
   const L=r.levers.slice().reverse();
-  const names=L.map(l=>LABELS[l.lever]||l.lever);
+  // Append ⓘ to the label when the lever has help text; the y categories (used by
+  // the bars and the connector) all reference this same `names` array.
+  const names=L.map(l=>(LABELS[l.lever]||l.lever)+(TIPS[l.lever]?INFO:""));
   const base=L.map(l=>Math.min(l.low,l.high));
   const span=L.map(l=>Math.abs(l.high-l.low));
-  // Mirror each slider's help text (the SAME TIPS map, no duplication) into the
-  // bar hover, wrapped so long descriptions don't overflow.
-  const wrap=(s,n=48)=>{const out=[];let line="";
-    for(const w of s.split(" ")){ if((line+" "+w).trim().length>n){out.push(line.trim());line=w;}
-      else line+=" "+w; } if(line.trim())out.push(line.trim()); return out.join("<br>"); };
+  // Map label text -> help text (the SAME TIPS map, no duplication) for the ⓘ hover.
+  _tornadoTips={};
+  L.forEach((l,i)=>{ if(TIPS[l.lever]) _tornadoTips[names[i]]=TIPS[l.lever]; });
   const hov=L.map(l=>{
-    const tip=TIPS[l.lever]?wrap(TIPS[l.lever])+"<br><br>":"";
     const lo=Math.min(l.low,l.high), hi=Math.max(l.low,l.high);
     const oor=(r.base<lo||r.base>hi)?"<br><br><b>Current slider value is outside its plausible literature range.</b>":"";
-    return `${tip}<b>${LABELS[l.lever]||l.lever}</b><br>low(${l.lo_set}) → ${fmt(l.low)}<br>high(${l.hi_set}) → ${fmt(l.high)}${oor}`;
+    return `<b>${LABELS[l.lever]||l.lever}</b><br>low(${l.lo_set}) → ${fmt(l.low)}<br>high(${l.hi_set}) → ${fmt(l.high)}${oor}`;
   });
   const up=L.map(l=>l.high>=l.low); // direction: does raising the lever raise the metric?
   // When a lever's CURRENT value is outside its literature range, its bar lands
@@ -554,19 +578,49 @@ function drawTornado(r){
      name:"raising lever → less burden",showlegend:true,hoverinfo:"skip"},
     {type:"scatter",mode:"lines",x:[null],y:[null],line:{color:"#9aa3b2",dash:"dot"},
      name:"current base value",showlegend:true,hoverinfo:"skip"}];
-  Plotly.react("c_tornado",[{
-      type:"bar", orientation:"h", y:names, x:span, base:base,
-      marker:{color:up.map(u=>u?"#4F2AC4":"#F85604")},
-      hovertext:hov, hoverinfo:"text", hoverlabel:{align:"left"}, showlegend:false
-    }, ...connector, ...legend],
-    {...dark, margin:{t:48,r:20,b:40,l:200}, height:Math.max(420, names.length*26+100),
-     showlegend:true, legend:{orientation:"h", x:0, y:1.05, font:{size:10}},
+  const narrow = window.innerWidth <= 760;
+  const layout = {...dark, showlegend:true,
      title:`Effect on: ${$("#sensMetric").selectedOptions[0].text}`,
      xaxis:{title:"metric value across lever's range"},
      shapes:[{type:"line", x0:r.base, x1:r.base, yref:"paper", y0:0, y1:1,
-              line:{color:"#9aa3b2", width:1, dash:"dot"}}]},
-    {displayModeBar:false,responsive:true});
+              line:{color:"#9aa3b2", width:1, dash:"dot"}}]};
+  if(narrow){
+    // A wide left margin for labels leaves almost no room for bars on a phone, so
+    // drop the margin, hide the axis labels, and put each lever name on its OWN
+    // line above its (thinner) bar — bars then use the full width. The legend
+    // moves below the plot so it can't cover the top bars.
+    layout.margin={t:34, r:14, b:110, l:12};
+    layout.yaxis={showticklabels:false};
+    layout.height=Math.max(360, names.length*40+160);
+    layout.legend={orientation:"h", x:0, xanchor:"left", y:-0.06, yanchor:"top", font:{size:10}};
+    layout.annotations=names.map(nm=>({
+      xref:"paper", x:0, xanchor:"left", y:nm, yref:"y", yanchor:"bottom", yshift:13,
+      text:nm, showarrow:false, align:"left", font:{size:10, color:"#e6e8ec"}}));
+  } else {
+    layout.margin={t:48, r:20, b:40, l:210};
+    layout.legend={orientation:"h", x:0, y:1.05, font:{size:10}};
+    layout.height=Math.max(420, names.length*26+100);
+  }
+  Plotly.react("c_tornado",[{
+      type:"bar", orientation:"h", y:names, x:span, base:base, width:narrow?0.5:undefined,
+      marker:{color:up.map(u=>u?"#4F2AC4":"#F85604")},
+      hovertext:hov, hoverinfo:"text", hoverlabel:{align:"left"}, showlegend:false
+    }, ...connector, ...legend],
+    layout,
+    {displayModeBar:false,responsive:true}).then(gd=>{
+      if(gd && !_tornadoHooked){ gd.on("plotly_afterplot", attachTornadoTips); _tornadoHooked=true; }
+      attachTornadoTips();
+    });
 }
+// Re-lay-out the tornado when the viewport crosses the mobile breakpoint (e.g. a
+// phone rotating), since the wide/narrow choice is made at draw time.
+let _tornResizeT=null, _tornWasNarrow=window.innerWidth<=760;
+window.addEventListener("resize",()=>{ clearTimeout(_tornResizeT);
+  _tornResizeT=setTimeout(()=>{
+    const nowNarrow=window.innerWidth<=760;
+    if(_lastTornado && nowNarrow!==_tornWasNarrow){ _tornWasNarrow=nowNarrow; drawTornado(_lastTornado); }
+  },200);
+});
 // ---- custom tooltips (native title is slow/invisible in some browsers) ----
 const tipEl=document.createElement("div"); tipEl.className="tiptip"; document.body.appendChild(tipEl);
 function positionTip(t){
