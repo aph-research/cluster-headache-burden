@@ -508,7 +508,7 @@ function draw(r){
      xaxis:ax({title:"Pain intensity",dtick:1}),yaxis:ax({title:"Person-years",hoverformat:",.1f"})},cfg);
   Plotly.react("c_tail",[{x:r.attacks_hist.centers,y:r.attacks_hist.counts,type:"bar",marker:{color:"#4aa3ff"}}],
     {...dark,title:{text:"Attacks/yr per patient (long tail)",font:tf},
-     xaxis:ax({title:"Attacks/yr",type:"log",hoverformat:",.1f"}),yaxis:ax({title:"# patients",hoverformat:",.0f"})},cfg);
+     xaxis:ax({title:"Attacks/yr",type:"log",dtick:1,tickformat:",d",hoverformat:",.1f"}),yaxis:ax({title:"# patients",hoverformat:",.0f"})},cfg);
   const g=r.burden_by_group.hours;
   Plotly.react("c_group",[{x:Object.keys(g),y:Object.values(g),type:"bar",marker:{color:"#37c98b"}}],
     {...dark,title:{text:"Mean hours/yr in attack per patient, by group",font:tf},
