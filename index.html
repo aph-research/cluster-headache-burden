@@ -476,8 +476,7 @@ async function runCI(){
   const pr=r.patients_reached;
   const rnd=n=>Math.round(n).toLocaleString();
   $("#funnelImplied").innerHTML=
-    `Implied <b>counterfactual patients helped/yr</b>: ${rnd(pr.p50)} <span style="opacity:.7">(p10–p90: ${rnd(pr.p10)}–${rnd(pr.p90)})</span>`+
-    ` &nbsp;·&nbsp; <span style="opacity:.7">${r.n_mc.toLocaleString()} draws</span>`;
+    `Implied <b>counterfactual patients helped/yr</b>: ${rnd(pr.p50)} <span style="opacity:.7">(p10–p90: ${rnd(pr.p10)}–${rnd(pr.p90)})</span>`;
   $("#ciStatus").textContent="";
 }
 function draw(r){
