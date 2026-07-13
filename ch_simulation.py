@@ -34,7 +34,7 @@ Provenance for every default: CH_simulation_sources.md. Key modelling decisions:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace, fields
+from dataclasses import dataclass, replace, fields, asdict
 import csv
 import numpy as np
 
@@ -49,7 +49,9 @@ class Config:
     # 53/100k is an ADULT (18+) prevalence -> apply to the adult population, not 8.1B.
     # ~72% of 8.1B are 18+. 53/100k * 5.8e9 = ~3.07M, matching the ~3M EA-draft figure.
     adult_population: float = 5.8e9
-    n_patients: int = 20_000                      # simulated cohort size
+    n_patients: int = 8_000                       # simulated cohort size (run-to-run
+    # spread <~2% on common metrics, ~4% on the ≥9/10 tail -- negligible vs the
+    # model's real error bars; 20k added reproducibility but no accuracy)
     seed: int = 0
 
     # ---- Subtype split ---------------------------------------------------- #
@@ -624,8 +626,29 @@ def cost_effectiveness(cfg: Config | None = None, *, annual_budget: float = 100_
 # --------------------------------------------------------------------------- #
 #  Monte-Carlo band helpers (uncertainty propagation)                         #
 # --------------------------------------------------------------------------- #
+# Cache of per-patient benefit (four floats) keyed on the simulation config. The
+# cost-effectiveness sections depend on the sim only through this, and NOT on the
+# budget / patients-reached / effect-size / funnel inputs -- so when only those
+# text fields change, we skip the (slow, pure-Python) counterfactual loop and reuse
+# the cached benefit. Also dedupes the ClusterFree + ClusterInfo panels, which
+# otherwise recompute the identical counterfactual on every run.
+_PP_CACHE = {}
+
+
 def _per_patient_benefit(cfg, channel, beneficiary_episodic_share):
     """Mean per-(untreated)-patient averted {attacks,severe,min,dles} for `channel`."""
+    key = (tuple(sorted(asdict(cfg).items())), channel, beneficiary_episodic_share)
+    hit = _PP_CACHE.get(key)
+    if hit is not None:
+        return hit
+    result = _compute_per_patient_benefit(cfg, channel, beneficiary_episodic_share)
+    if len(_PP_CACHE) > 64:   # bound memory; sensitivity sweeps many distinct configs
+        _PP_CACHE.clear()
+    _PP_CACHE[key] = result
+    return result
+
+
+def _compute_per_patient_benefit(cfg, channel, beneficiary_episodic_share):
     d = _counterfactual(cfg)
     ep = d["is_episodic"]
 

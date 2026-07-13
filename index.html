@@ -324,7 +324,7 @@ async function init(){
   }
   ["ce_budget","ce_reached","ce_eff_mean","ce_eff_sd"].forEach(id=>{
     $("#"+id).addEventListener("input",()=>{
-      setBell("bell_ce_eff","ce_eff_mean","ce_eff_sd"); runCF();
+      setBell("bell_ce_eff","ce_eff_mean","ce_eff_sd"); scheduleCF();
     });
   });
   setBell("bell_ce_eff","ce_eff_mean","ce_eff_sd");
@@ -370,7 +370,7 @@ async function init(){
       .forEach(id=>$("#"+id).addEventListener("input",()=>{
         const f=FUNNEL.find(x=>id===`fun_${x.k}_mean`||id===`fun_${x.k}_sd`);
         if(f) setBell(`bell_fun_${f.k}`,`fun_${f.k}_mean`,`fun_${f.k}_sd`);
-        runCI();
+        scheduleCI();
       }));
   }
   const actions=document.createElement("div"); actions.className="actions";
@@ -386,6 +386,13 @@ async function init(){
 }
 let timer=null;
 function schedule(){ clearTimeout(timer); timer=setTimeout(run,250); }
+// Debounce the cost-effectiveness recompute the same way as the sliders, so typing
+// in a text field (budget / reached / effect size / visitors / funnel factors) does
+// not fire a recompute per keystroke. The per-patient sim is memoized backend-side
+// and these inputs don't change it, so each recompute is cheap once it does run.
+let cfTimer=null, ciTimer=null;
+function scheduleCF(){ clearTimeout(cfTimer); cfTimer=setTimeout(runCF,200); }
+function scheduleCI(){ clearTimeout(ciTimer); ciTimer=setTimeout(runCI,200); }
 async function run(){
   $("#status").textContent="Running…";
   try{

@@ -182,7 +182,7 @@ def dispatch(endpoint, params=None):
     if endpoint == "cost_effectiveness":
         # ClusterFree: effect size is a truncated-normal (median, sd) -> MC bands.
         overrides = _overrides(params)
-        overrides["n_patients"] = int(float(params.get("ce_n", 8000)))
+        overrides["n_patients"] = int(float(params.get("ce_n", 4000)))
         kw = dict(
             annual_budget=float(params.get("annual_budget", 100000)),
             patients_reached=float(params.get("patients_reached", 500)),
@@ -196,7 +196,7 @@ def dispatch(endpoint, params=None):
 
     if endpoint == "cost_effectiveness_funnel":
         overrides = _overrides(params)
-        overrides["n_patients"] = int(float(params.get("ce_n", 8000)))
+        overrides["n_patients"] = int(float(params.get("ce_n", 4000)))
 
         def gauss(name, dmean, dsd):  # (median, sd) truncated-normal factor
             return (float(params.get(f"{name}_mean", dmean)),
