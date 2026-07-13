@@ -300,6 +300,7 @@ class SimulationResult:
             "pct_attacks_aborted": 100 * float(self.aborted.mean()),
             "global_attacks_per_year": float(self.intensity_distribution("attacks").sum()),
             "global_person_years_in_attack": py(self.duration.sum()),
+            "global_person_days_in_attack": py(self.duration.sum()) * 365.0,
             # person-years AT each level (true time-at-level, not by-peak):
             "global_person_years_at_ge7": py(tal[6:].sum()),
             "global_person_years_at_ge9": py(tal[8:].sum()),
