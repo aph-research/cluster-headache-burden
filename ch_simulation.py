@@ -91,8 +91,8 @@ class Config:
 
     # ---- Per-attack PEAK INTENSITY: two-level model (NRS 1..10) ----------- #
     intensity_mean: float = 7.0                   # population mean peak (Snoer ~7.0)
-    intensity_between_sd: float = 1.6             # between-patient severity SD
-    intensity_within_sd: float = 1.0             # within-patient attack-to-attack SD
+    intensity_between_sd: float = 1.2             # between-patient severity SD
+    intensity_within_sd: float = 0.9             # within-patient attack-to-attack SD
     # (marginal SD ~ sqrt(1.6^2+1.0^2) = 1.89, matching Snoer ~2.3 / Russell spread)
 
     # ---- Per-attack DURATION (intrinsic/untreated), minutes --------------- #
