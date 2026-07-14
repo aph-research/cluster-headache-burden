@@ -36,6 +36,7 @@ JSON_ROUTES = {
     "/api/config": "config",
     "/api/simulate": "simulate",
     "/api/sensitivity": "sensitivity",
+    "/api/sensitivity_ce": "sensitivity_ce",
     "/api/cost_effectiveness": "cost_effectiveness",
     "/api/cost_effectiveness_funnel": "cost_effectiveness_funnel",
 }

@@ -169,6 +169,24 @@
       </div>
       <div id="c_tornado"></div>
     </div>
+
+    <h2 class="sec-h">Sensitivity of cost-effectiveness (ClusterFree)
+      <span class="info" data-tip="Tornado for a ClusterFree $/X-averted metric. Each lever is swept across its literature-plausible range (and the effect-size median across 0.4–0.8), holding the annual budget and patients-helped fixed at the ClusterFree values above. Prevalence and the two access levers drop out entirely: cost-effectiveness depends on the per-patient benefit and how many we help, not on the size of the sufferer pool or on current access levels.">ⓘ</span></h2>
+    <div class="chart full" style="min-height:0">
+      <div style="display:flex;gap:8px;align-items:center;padding:6px 8px;flex-wrap:wrap">
+        <strong style="font-size:12px">Metric:</strong>
+        <select id="sensCEMetric">
+          <option value="cost_per_dles" selected>$ / DLES averted</option>
+          <option value="cost_per_attack">$ / attack averted</option>
+          <option value="cost_per_severe_attack">$ / severe (≥9/10) attack averted</option>
+          <option value="cost_per_attack_hour">$ / attack-hour averted</option>
+        </select>
+        <button id="sensCEBtn">Run sensitivity ▶</button>
+        <span id="sensCEStatus" class="status"></span>
+        <span style="font-size:11px;color:var(--mut)">Each lever swept across its plausible range (effect size 0.4–0.8); budget &amp; patients-helped held at the ClusterFree values above. Prevalence and access levers drop out.</span>
+      </div>
+      <div id="c_tornado_ce"></div>
+    </div>
   </main>
 </div>
 <script>
@@ -188,6 +206,7 @@ const LABELS = {
   e_attacks_per_day_mean:"Episodic attacks/day", c_attacks_per_day_mean:"Chronic attacks/day",
   e_bout_weeks_mean:"Bout length (weeks)", e_bouts_per_year_mean:"Bouts per year",
   annual_prevalence_per_100k:"Annual prevalence /100k", n_patients:"Simulated patients",
+  effect_size_mean:"Effect size (median)",
 };
 const TIPS = {
   annual_prevalence_per_100k:"How many adults out of every 100,000 have cluster headache in a given year. Default 53 comes from a large pooled study (Fischera 2007); across the world's ~5.8B adults that works out to ~3.07M sufferers in a year.",
@@ -203,6 +222,7 @@ const TIPS = {
   preventive_responder_reduction_mean:"For the people a preventive helps, the average drop in how many attacks they get. In the trials and surveys behind this, a person only counts as helped ('responder') if attacks fall by at least half, so the average drop among them sits somewhat above 50%.",
   preventive_responder_reduction_sd:"How much the attack reduction varies from person to person among those the preventive helps.",
   preventive_peak_intensity_reduction:"How much a preventive lowers the worst (peak) pain of the attacks that still occur, among responders (the patients it helps). Preventive trials mainly document fewer attacks; any severity reduction of breakthrough attacks is weakly quantified, so this defaults low (0.1). Set 0 for frequency-only.",
+  effect_size_mean:"ClusterFree effect size: of the full no-treatment → full-access benefit, the average share a helped patient actually realizes. Swept across 0.4–0.8 in this tornado (the median of the truncated-normal used elsewhere). A first-order linear driver of every $/X-averted figure.",
   intensity_mean:"Average worst-pain rating of an attack on a 1–10 scale. Diary studies where patients rate attacks as they happen give ~7 (Snoer), not the commonly-cited '9.7/10' figure, which is people evaluating CH pain generally.",
   intensity_between_sd:"How much patients differ from one another in their typical attack pain. Set larger than the within-patient spread below, because studies suggest most variation is between people, not within one person (Snoer).",
   intensity_within_sd:"How much a single patient's own attacks vary in pain around their personal average. Kept small, since one person's attacks tend to be fairly similar to each other.",
@@ -520,7 +540,10 @@ function draw(r){
      yaxis:ax({title:"Hours/yr",hoverformat:",.1f"})},cfg);
 }
 // ---- sensitivity / tornado ----
-document.addEventListener("click", e=>{ if(e.target && e.target.id==="sensBtn") runSensitivity(); });
+document.addEventListener("click", e=>{
+  if(e.target && e.target.id==="sensBtn") runSensitivity();
+  if(e.target && e.target.id==="sensCEBtn") runSensitivityCE();
+});
 async function runSensitivity(){
   const metric=$("#sensMetric").value;
   const mode=await ensureMode();
@@ -531,22 +554,41 @@ async function runSensitivity(){
     drawTornado(r); $("#sensStatus").textContent="Done.";
   }catch(e){ $("#sensStatus").textContent="Error: "+e.message; }
 }
+async function runSensitivityCE(){
+  const metric=$("#sensCEMetric").value;
+  const mode=await ensureMode();
+  const n_sens = mode==="pyodide" ? 2000 : 4000;
+  $("#sensCEStatus").textContent = "Running…";
+  try{
+    const r=await api("sensitivity_ce", {...state, metric, n_sens,
+      annual_budget:uncomma($("#ce_budget").value),
+      patients_reached:uncomma($("#ce_reached").value),
+      effect_size_mean:$("#ce_eff_mean").value});
+    drawTornadoCE(r); $("#sensCEStatus").textContent="Done.";
+  }catch(e){ $("#sensCEStatus").textContent="Error: "+e.message; }
+}
 // Each lever's help text becomes an ⓘ tooltip on its y-axis label, like the
 // sidebar. Plotly draws those labels as SVG, so after every render we tag them
 // with data-tip (keyed on the exact label text) and let the existing custom-
 // tooltip handler drive them. Re-runs on plotly_afterplot too (covers resizes).
 const INFO=" ⓘ";
-let _tornadoTips={}, _tornadoHooked=false, _lastTornado=null;
-function attachTornadoTips(){
+// per-container tornado state, so the burden and cost-effectiveness tornados
+// coexist: {tips: labelText->helpText, hooked, last (result), opts}.
+const _torn={};
+function attachTornadoTips(cid){
+  const st=_torn[cid]; if(!st) return;
   // y-axis tick labels (wide layout) OR the per-bar annotations (narrow layout)
-  document.querySelectorAll("#c_tornado g.ytick text, #c_tornado g.annotation text").forEach(t=>{
-    const tip=_tornadoTips[t.textContent];
+  document.querySelectorAll(`#${cid} g.ytick text, #${cid} g.annotation text`).forEach(t=>{
+    const tip=st.tips[t.textContent];
     if(tip){ t.setAttribute("data-tip", tip); t.style.cursor="help"; t.style.pointerEvents="all"; }
     else t.removeAttribute("data-tip");
   });
 }
-function drawTornado(r){
-  _lastTornado=r;   // remember, so a resize across the mobile breakpoint can re-lay-out
+// Generic tornado renderer. opts = {title, xtitle, moreLabel, lessLabel, fmtVal}.
+function drawTornadoInto(cid, r, opts){
+  const st=_torn[cid] || (_torn[cid]={tips:{}, hooked:false});
+  st.last=r; st.opts=opts;
+  const F=opts.fmtVal||fmt;
   // biggest span first -> put at top (reverse for Plotly bottom-up order)
   const L=r.levers.slice().reverse();
   // Append ⓘ to the label when the lever has help text; the y categories (used by
@@ -555,12 +597,12 @@ function drawTornado(r){
   const base=L.map(l=>Math.min(l.low,l.high));
   const span=L.map(l=>Math.abs(l.high-l.low));
   // Map label text -> help text (the SAME TIPS map, no duplication) for the ⓘ hover.
-  _tornadoTips={};
-  L.forEach((l,i)=>{ if(TIPS[l.lever]) _tornadoTips[names[i]]=TIPS[l.lever]; });
+  st.tips={};
+  L.forEach((l,i)=>{ if(TIPS[l.lever]) st.tips[names[i]]=TIPS[l.lever]; });
   const hov=L.map(l=>{
     const lo=Math.min(l.low,l.high), hi=Math.max(l.low,l.high);
     const oor=(r.base<lo||r.base>hi)?"<br><br><b>Current slider value is outside its plausible literature range.</b>":"";
-    return `<b>${LABELS[l.lever]||l.lever}</b><br>low(${l.lo_set}) → ${fmt(l.low)}<br>high(${l.hi_set}) → ${fmt(l.high)}${oor}`;
+    return `<b>${LABELS[l.lever]||l.lever}</b><br>low(${l.lo_set}) → ${F(l.low)}<br>high(${l.hi_set}) → ${F(l.high)}${oor}`;
   });
   const up=L.map(l=>l.high>=l.low); // direction: does raising the lever raise the metric?
   // When a lever's CURRENT value is outside its literature range, its bar lands
@@ -576,15 +618,15 @@ function drawTornado(r){
       line:{color:"#9aa3b2", width:1, dash:"dot"}, hoverinfo:"skip", showlegend:false}] : [];
   const legend=[ // legend-only dummy traces, so the colour code lives in the plot
     {type:"bar",orientation:"h",x:[null],y:[null],marker:{color:"#4F2AC4"},
-     name:"raising lever → more burden",showlegend:true,hoverinfo:"skip"},
+     name:opts.moreLabel,showlegend:true,hoverinfo:"skip"},
     {type:"bar",orientation:"h",x:[null],y:[null],marker:{color:"#F85604"},
-     name:"raising lever → less burden",showlegend:true,hoverinfo:"skip"},
+     name:opts.lessLabel,showlegend:true,hoverinfo:"skip"},
     {type:"scatter",mode:"lines",x:[null],y:[null],line:{color:"#9aa3b2",dash:"dot"},
      name:"current base value",showlegend:true,hoverinfo:"skip"}];
   const narrow = window.innerWidth <= 760;
   const layout = {...dark, showlegend:true,
-     title:`Effect on: ${$("#sensMetric").selectedOptions[0].text}`,
-     xaxis:{title:"metric value across lever's range"},
+     title:opts.title,
+     xaxis:{title:opts.xtitle||"metric value across lever's range"},
      shapes:[{type:"line", x0:r.base, x1:r.base, yref:"paper", y0:0, y1:1,
               line:{color:"#9aa3b2", width:1, dash:"dot"}}]};
   if(narrow){
@@ -604,24 +646,39 @@ function drawTornado(r){
     layout.legend={orientation:"h", x:0, y:1.05, font:{size:10}};
     layout.height=Math.max(420, names.length*26+100);
   }
-  Plotly.react("c_tornado",[{
+  Plotly.react(cid,[{
       type:"bar", orientation:"h", y:names, x:span, base:base, width:narrow?0.5:undefined,
       marker:{color:up.map(u=>u?"#4F2AC4":"#F85604")},
       hovertext:hov, hoverinfo:"text", hoverlabel:{align:"left"}, showlegend:false
     }, ...connector, ...legend],
     layout,
     {displayModeBar:false,responsive:true}).then(gd=>{
-      if(gd && !_tornadoHooked){ gd.on("plotly_afterplot", attachTornadoTips); _tornadoHooked=true; }
-      attachTornadoTips();
+      if(gd && !st.hooked){ gd.on("plotly_afterplot", ()=>attachTornadoTips(cid)); st.hooked=true; }
+      attachTornadoTips(cid);
     });
 }
-// Re-lay-out the tornado when the viewport crosses the mobile breakpoint (e.g. a
-// phone rotating), since the wide/narrow choice is made at draw time.
+function drawTornado(r){
+  drawTornadoInto("c_tornado", r, {
+    title:`Effect on: ${$("#sensMetric").selectedOptions[0].text}`,
+    moreLabel:"raising lever → more burden",
+    lessLabel:"raising lever → less burden"});
+}
+function drawTornadoCE(r){
+  drawTornadoInto("c_tornado_ce", r, {
+    title:`Effect on: ${$("#sensCEMetric").selectedOptions[0].text}`,
+    xtitle:"$ per unit averted across lever's range",
+    moreLabel:"raising lever → higher $ (less cost-effective)",
+    lessLabel:"raising lever → lower $ (more cost-effective)",
+    fmtVal:money});
+}
+// Re-lay-out any drawn tornado when the viewport crosses the mobile breakpoint
+// (e.g. a phone rotating), since the wide/narrow choice is made at draw time.
 let _tornResizeT=null, _tornWasNarrow=window.innerWidth<=760;
 window.addEventListener("resize",()=>{ clearTimeout(_tornResizeT);
   _tornResizeT=setTimeout(()=>{
     const nowNarrow=window.innerWidth<=760;
-    if(_lastTornado && nowNarrow!==_tornWasNarrow){ _tornWasNarrow=nowNarrow; drawTornado(_lastTornado); }
+    if(nowNarrow!==_tornWasNarrow){ _tornWasNarrow=nowNarrow;
+      for(const cid in _torn){ if(_torn[cid].last) drawTornadoInto(cid, _torn[cid].last, _torn[cid].opts); } }
   },200);
 });
 // ---- custom tooltips (native title is slow/invisible in some browsers) ----

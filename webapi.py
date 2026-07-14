@@ -162,6 +162,46 @@ def sensitivity_payload(state, metric, n_sens):
     return {"base": base_val, "metric": metric, "levers": levers}
 
 
+# ClusterFree cost-effectiveness ($/X-averted) depends only on the PER-PATIENT
+# averted burden and the effect size -- NOT on the global sufferer pool or on
+# current access levels (the counterfactual gives each helped patient full access).
+# So the prevalence and both access-fraction levers drop out; effect-size median is
+# added (budget and patients-reached are excluded -- they are point inputs the user
+# sets, not swept here).
+CE_TORNADO_EXCLUDE = {"annual_prevalence_per_100k",
+                      "treatment_access_fraction", "preventive_access_fraction"}
+CE_PLAUSIBLE = {k: v for k, v in PLAUSIBLE.items() if k not in CE_TORNADO_EXCLUDE}
+CE_PLAUSIBLE["effect_size_mean"] = (0.4, 0.8)   # ClusterFree effect-size median span (assumption)
+
+
+def sensitivity_ce_payload(state, metric, n_sens, *, annual_budget,
+                           patients_reached, effect_size_mean, channel="both"):
+    """Tornado for a ClusterFree cost-effectiveness metric ($/X-averted). Sweeps the
+    per-patient-benefit levers plus effect-size median across their plausible ranges,
+    holding budget and reached fixed. Uses the point cost_effectiveness() (no MC)."""
+    base_over = {**state, "n_patients": n_sens}
+
+    def ce(over, eff):
+        r = cost_effectiveness(annual_budget=annual_budget, patients_reached=patients_reached,
+                               channel=channel, effect_size_mean=eff, **over)
+        return r.get(metric)
+
+    base_val = ce(base_over, effect_size_mean)
+    levers = []
+    for lever, (mn, mx) in CE_PLAUSIBLE.items():
+        if lever == "effect_size_mean":          # not a sim lever -> vary the scalar
+            lo, hi = ce(base_over, mn), ce(base_over, mx)
+        else:
+            lo = ce({**base_over, lever: mn}, effect_size_mean)
+            hi = ce({**base_over, lever: mx}, effect_size_mean)
+        # a None ratio (0 averted) is rare here; show it as "no change" rather than break
+        lo = base_val if lo is None else lo
+        hi = base_val if hi is None else hi
+        levers.append({"lever": lever, "low": lo, "high": hi, "lo_set": mn, "hi_set": mx})
+    levers.sort(key=lambda r: abs(r["high"] - r["low"]), reverse=True)
+    return {"base": base_val, "metric": metric, "levers": levers}
+
+
 def dispatch(endpoint, params=None):
     """Route an endpoint name + params dict to a result.
 
@@ -180,6 +220,16 @@ def dispatch(endpoint, params=None):
         metric = params.get("metric", "global_person_years_at_ge9")
         n_sens = int(float(params.get("n_sens", 6000)))
         return sensitivity_payload(_overrides(params), metric, n_sens)
+
+    if endpoint == "sensitivity_ce":
+        metric = params.get("metric", "cost_per_dles")
+        n_sens = int(float(params.get("n_sens", 4000)))
+        return sensitivity_ce_payload(
+            _overrides(params), metric, n_sens,
+            annual_budget=float(params.get("annual_budget", 100000)),
+            patients_reached=float(params.get("patients_reached", 500)),
+            effect_size_mean=float(params.get("effect_size_mean", 0.6)),
+            channel="both")
 
     if endpoint == "cost_effectiveness":
         # ClusterFree: effect size is a truncated-normal (median, sd) -> MC bands.
