@@ -170,8 +170,14 @@ def sensitivity_payload(state, metric, n_sens):
 # sets, not swept here).
 CE_TORNADO_EXCLUDE = {"annual_prevalence_per_100k",
                       "treatment_access_fraction", "preventive_access_fraction"}
-CE_PLAUSIBLE = {k: v for k, v in PLAUSIBLE.items() if k not in CE_TORNADO_EXCLUDE}
-CE_PLAUSIBLE["effect_size_mean"] = (0.4, 0.8)   # ClusterFree effect-size median span (assumption)
+CE_MODEL_LEVERS = {k: v for k, v in PLAUSIBLE.items() if k not in CE_TORNADO_EXCLUDE}
+CE_PLAUSIBLE = {**CE_MODEL_LEVERS, "effect_size_mean": (0.4, 0.8)}  # ClusterFree: + effect-size median
+
+# ClusterInfo builds patients_reached bottom-up from funnel factors and its effect
+# size IS clinical_capture, so its tornado sweeps the model levers plus those factors.
+CI_REACH_FACTORS = ("patient_fraction", "engaged_fraction",
+                    "adoption_fraction", "counterfactual_share")
+CI_FUNNEL_FACTORS = CI_REACH_FACTORS + ("clinical_capture",)
 
 
 def sensitivity_ce_payload(state, metric, n_sens, *, annual_budget,
@@ -202,6 +208,42 @@ def sensitivity_ce_payload(state, metric, n_sens, *, annual_budget,
     return {"base": base_val, "metric": metric, "levers": levers}
 
 
+def sensitivity_ce_funnel_payload(state, metric, n_sens, *, annual_budget,
+                                  annual_unique_visitors, factors, channel="both"):
+    """Tornado for a ClusterInfo cost-effectiveness metric. Sweeps the per-patient
+    model levers (re-simulated) plus the five funnel-factor medians. Each factor is
+    a pure multiplicative term in reach x effect, so $/X scales as 1/factor -- swept
+    analytically off the base value (no re-sim) across its own ~p10..p90."""
+    base_over = {**state, "n_patients": n_sens}
+    med = {k: v[0] for k, v in factors.items()}
+    reached_med = annual_unique_visitors
+    for k in CI_REACH_FACTORS:
+        reached_med *= med[k]
+    eff_med = med["clinical_capture"]
+
+    def ce_model(over):
+        r = cost_effectiveness(annual_budget=annual_budget, patients_reached=reached_med,
+                               channel=channel, effect_size_mean=eff_med, **over)
+        return r.get(metric)
+
+    base_val = ce_model(base_over)
+    levers = []
+    for lever, (mn, mx) in CE_MODEL_LEVERS.items():   # per-patient benefit levers (re-sim)
+        lo = ce_model({**base_over, lever: mn})
+        hi = ce_model({**base_over, lever: mx})
+        levers.append({"lever": lever, "low": base_val if lo is None else lo,
+                       "high": base_val if hi is None else hi, "lo_set": mn, "hi_set": mx})
+    Z = 1.2816   # ~p10..p90 of a factor's own (median, sd)
+    if base_val is not None:
+        for k, (m, sd) in factors.items():
+            lo_v = min(1.0, max(0.02, m - Z * sd))   # floor keeps 1/factor finite
+            hi_v = min(1.0, max(0.02, m + Z * sd))
+            levers.append({"lever": k, "low": base_val * m / lo_v, "high": base_val * m / hi_v,
+                           "lo_set": round(lo_v, 3), "hi_set": round(hi_v, 3)})
+    levers.sort(key=lambda r: abs(r["high"] - r["low"]), reverse=True)
+    return {"base": base_val, "metric": metric, "levers": levers}
+
+
 def dispatch(endpoint, params=None):
     """Route an endpoint name + params dict to a result.
 
@@ -224,8 +266,25 @@ def dispatch(endpoint, params=None):
     if endpoint == "sensitivity_ce":
         metric = params.get("metric", "cost_per_dles")
         n_sens = int(float(params.get("n_sens", 4000)))
+        over = _overrides(params)
+        if params.get("source") == "clusterinfo":
+            def gauss(name, dm, ds):
+                return (float(params.get(f"{name}_mean", dm)),
+                        float(params.get(f"{name}_sd", ds)))
+            factors = {
+                "patient_fraction": gauss("patient_fraction", 0.75, 0.10),
+                "engaged_fraction": gauss("engaged_fraction", 0.30, 0.10),
+                "adoption_fraction": gauss("adoption_fraction", 0.25, 0.10),
+                "counterfactual_share": gauss("counterfactual_share", 0.50, 0.12),
+                "clinical_capture": gauss("clinical_capture", 0.50, 0.13),
+            }
+            return sensitivity_ce_funnel_payload(
+                over, metric, n_sens,
+                annual_budget=float(params.get("annual_budget", 50000)),
+                annual_unique_visitors=float(params.get("annual_unique_visitors", 10000)),
+                factors=factors, channel="both")
         return sensitivity_ce_payload(
-            _overrides(params), metric, n_sens,
+            over, metric, n_sens,
             annual_budget=float(params.get("annual_budget", 100000)),
             patients_reached=float(params.get("patients_reached", 500)),
             effect_size_mean=float(params.get("effect_size_mean", 0.6)),

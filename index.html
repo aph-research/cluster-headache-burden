@@ -102,6 +102,23 @@
       <div class="chart" id="c_group"></div>
     </div>
 
+    <h2 class="sec-h">Sensitivity of burden calculations</h2>
+    <div class="chart full" style="min-height:0">
+      <div style="display:flex;gap:8px;align-items:center;padding:6px 8px;flex-wrap:wrap">
+        <strong style="font-size:12px">Metric:</strong>
+        <select id="sensMetric">
+          <option value="global_person_years_at_ge9">Person-years at ≥9/10</option>
+          <option value="global_person_days_at_ge9" selected>Person-days at ≥9/10 (DLES)</option>
+          <option value="global_person_years_in_attack">Person-years at any pain level</option>
+          <option value="global_person_days_in_attack">Person-days at any pain level</option>
+        </select>
+        <button id="sensBtn">Run sensitivity ▶</button>
+        <span id="sensStatus" class="status"></span>
+        <span style="font-size:11px;color:var(--mut)">Each lever swept across its literature-plausible range (not slider width), others held at current values</span>
+      </div>
+      <div id="c_tornado"></div>
+    </div>
+
     <h2 class="sec-h">Cost-effectiveness of ClusterFree
       <span class="info" data-tip="The organization's TOTAL cost-effectiveness across all our initiatives combined (ClusterInfo, the open letters, and everything else). Enter the whole annual budget, the total counterfactual patients helped across all projects, and the effect size. For a single project's bottom-up estimate, see the ClusterInfo section below.">ⓘ</span>
       <span id="ceStatus" style="font-size:11px;font-weight:400;color:var(--mut);margin-left:6px"></span></h2>
@@ -153,27 +170,15 @@
       <div class="cards" id="ciCardsSev" style="margin:0 0 4px"></div>
     </div>
 
-    <h2 class="sec-h">Sensitivity of burden calculations</h2>
+    <h2 class="sec-h">Sensitivity of cost-effectiveness
+      <span class="info" data-tip="Tornado for a $/X-averted metric of the selected project. Each model lever is swept across its literature-plausible range; for ClusterFree the effect-size median is also swept (0.4–0.8), for ClusterInfo the five funnel-factor medians are swept across their own p10–p90. Budget and the reach inputs (patients-helped / visitors) are held fixed at that project's values above. Prevalence and the two access levers drop out entirely: cost-effectiveness depends on the per-patient benefit and how many we help, not on the size of the sufferer pool or on current access levels.">ⓘ</span></h2>
     <div class="chart full" style="min-height:0">
       <div style="display:flex;gap:8px;align-items:center;padding:6px 8px;flex-wrap:wrap">
-        <strong style="font-size:12px">Metric:</strong>
-        <select id="sensMetric">
-          <option value="global_person_years_at_ge9">Person-years at ≥9/10</option>
-          <option value="global_person_days_at_ge9" selected>Person-days at ≥9/10 (DLES)</option>
-          <option value="global_person_years_in_attack">Person-years at any pain level</option>
-          <option value="global_person_days_in_attack">Person-days at any pain level</option>
+        <strong style="font-size:12px">Project:</strong>
+        <select id="sensCESource">
+          <option value="clusterfree" selected>ClusterFree</option>
+          <option value="clusterinfo">ClusterInfo only</option>
         </select>
-        <button id="sensBtn">Run sensitivity ▶</button>
-        <span id="sensStatus" class="status"></span>
-        <span style="font-size:11px;color:var(--mut)">Each lever swept across its literature-plausible range (not slider width), others held at current values</span>
-      </div>
-      <div id="c_tornado"></div>
-    </div>
-
-    <h2 class="sec-h">Sensitivity of cost-effectiveness (ClusterFree)
-      <span class="info" data-tip="Tornado for a ClusterFree $/X-averted metric. Each lever is swept across its literature-plausible range (and the effect-size median across 0.4–0.8), holding the annual budget and patients-helped fixed at the ClusterFree values above. Prevalence and the two access levers drop out entirely: cost-effectiveness depends on the per-patient benefit and how many we help, not on the size of the sufferer pool or on current access levels.">ⓘ</span></h2>
-    <div class="chart full" style="min-height:0">
-      <div style="display:flex;gap:8px;align-items:center;padding:6px 8px;flex-wrap:wrap">
         <strong style="font-size:12px">Metric:</strong>
         <select id="sensCEMetric">
           <option value="cost_per_dles" selected>$ / DLES averted</option>
@@ -183,7 +188,7 @@
         </select>
         <button id="sensCEBtn">Run sensitivity ▶</button>
         <span id="sensCEStatus" class="status"></span>
-        <span style="font-size:11px;color:var(--mut)">Each lever swept across its plausible range (effect size 0.4–0.8); budget &amp; patients-helped held at the ClusterFree values above. Prevalence and access levers drop out.</span>
+        <span style="font-size:11px;color:var(--mut)">Each lever swept across its plausible range; budget &amp; reach held at the selected project's values above. Prevalence and access levers drop out.</span>
       </div>
       <div id="c_tornado_ce"></div>
     </div>
@@ -207,6 +212,9 @@ const LABELS = {
   e_bout_weeks_mean:"Bout length (weeks)", e_bouts_per_year_mean:"Bouts per year",
   annual_prevalence_per_100k:"Annual prevalence /100k", n_patients:"Simulated patients",
   effect_size_mean:"Effect size (median)",
+  patient_fraction:"P(patient | visitor)", engaged_fraction:"P(engaged | patient)",
+  adoption_fraction:"P(adopts | engaged)", counterfactual_share:"Counterfactual share",
+  clinical_capture:"Effect size (median)",
 };
 const TIPS = {
   annual_prevalence_per_100k:"How many adults out of every 100,000 have cluster headache in a given year. Default 53 comes from a large pooled study (Fischera 2007); across the world's ~5.8B adults that works out to ~3.07M sufferers in a year.",
@@ -223,6 +231,11 @@ const TIPS = {
   preventive_responder_reduction_sd:"How much the attack reduction varies from person to person among those the preventive helps.",
   preventive_peak_intensity_reduction:"How much a preventive lowers the worst (peak) pain of the attacks that still occur, among responders (the patients it helps). Preventive trials mainly document fewer attacks; any severity reduction of breakthrough attacks is weakly quantified, so this defaults low (0.1). Set 0 for frequency-only.",
   effect_size_mean:"ClusterFree effect size: of the full no-treatment → full-access benefit, the average share a helped patient actually realizes. Swept across 0.4–0.8 in this tornado (the median of the truncated-normal used elsewhere). A first-order linear driver of every $/X-averted figure.",
+  patient_fraction:"ClusterInfo funnel: share of visitors who are an actual CH patient (or caregiver acting for one). Swept across its own p10–p90. A multiplicative driver of patients-helped, so $/X scales inversely with it.",
+  engaged_fraction:"ClusterInfo funnel: share of patient-visitors who genuinely engage rather than bounce. Swept across its own p10–p90; $/X scales inversely with it.",
+  adoption_fraction:"ClusterInfo funnel: share of engaged patients who actually try/change a treatment — the least-observable, widest-spread factor. Swept across its own p10–p90; $/X scales inversely with it.",
+  counterfactual_share:"ClusterInfo funnel: of those who adopt, the share who would NOT have done so without us. Swept across its own p10–p90; $/X scales inversely with it.",
+  clinical_capture:"ClusterInfo effect size: of the full no-treatment → full-access benefit, the average share an adopter realizes. Swept across its own p10–p90; $/X scales inversely with it.",
   intensity_mean:"Average worst-pain rating of an attack on a 1–10 scale. Diary studies where patients rate attacks as they happen give ~7 (Snoer), not the commonly-cited '9.7/10' figure, which is people evaluating CH pain generally.",
   intensity_between_sd:"How much patients differ from one another in their typical attack pain. Set larger than the within-patient spread below, because studies suggest most variation is between people, not within one person (Snoer).",
   intensity_within_sd:"How much a single patient's own attacks vary in pain around their personal average. Kept small, since one person's attacks tend to be fairly similar to each other.",
@@ -556,14 +569,25 @@ async function runSensitivity(){
 }
 async function runSensitivityCE(){
   const metric=$("#sensCEMetric").value;
+  const source=$("#sensCESource").value;
   const mode=await ensureMode();
   const n_sens = mode==="pyodide" ? 2000 : 4000;
   $("#sensCEStatus").textContent = "Running…";
   try{
-    const r=await api("sensitivity_ce", {...state, metric, n_sens,
-      annual_budget:uncomma($("#ce_budget").value),
-      patients_reached:uncomma($("#ce_reached").value),
-      effect_size_mean:$("#ce_eff_mean").value});
+    let p;
+    if(source==="clusterinfo"){
+      p={...state, metric, n_sens, source,
+         annual_budget:uncomma($("#ci_budget").value),
+         annual_unique_visitors:uncomma($("#fun_visitors").value)};
+      ["patient_fraction","engaged_fraction","adoption_fraction","counterfactual_share","clinical_capture"]
+        .forEach(k=>{ p[k+"_mean"]=$("#fun_"+k+"_mean").value; p[k+"_sd"]=$("#fun_"+k+"_sd").value; });
+    } else {
+      p={...state, metric, n_sens, source,
+         annual_budget:uncomma($("#ce_budget").value),
+         patients_reached:uncomma($("#ce_reached").value),
+         effect_size_mean:$("#ce_eff_mean").value};
+    }
+    const r=await api("sensitivity_ce", p);
     drawTornadoCE(r); $("#sensCEStatus").textContent="Done.";
   }catch(e){ $("#sensCEStatus").textContent="Error: "+e.message; }
 }
@@ -664,8 +688,9 @@ function drawTornado(r){
     lessLabel:"raising lever → less burden"});
 }
 function drawTornadoCE(r){
+  const src=$("#sensCESource").selectedOptions[0].text;
   drawTornadoInto("c_tornado_ce", r, {
-    title:`Effect on: ${$("#sensCEMetric").selectedOptions[0].text}`,
+    title:`Effect on: ${$("#sensCEMetric").selectedOptions[0].text} — ${src}`,
     xtitle:"$ per unit averted across lever's range",
     moreLabel:"raising lever → higher $ (less cost-effective)",
     lessLabel:"raising lever → lower $ (more cost-effective)",
