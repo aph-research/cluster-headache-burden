@@ -21,15 +21,19 @@ Provenance for every default: CH_simulation_sources.md. Key modelling decisions:
     Aggregated studies cannot separate these, so both are explicit levers.
     Snoer 2019 found LOW within-patient variability -> between dominates.
   * A treatment's robust effect is to ABORT the attack (truncate DURATION to the
-    time-to-relief), NOT lower the peak (peak ~9 min precedes the abortive;
-    Snoer treated 7.3 vs untreated 7.0). `treated_peak_intensity_reduction`=0.
+    time-to-relief). The peak comes early (~9 min, before the abortive fully
+    acts; Snoer treated 7.3 vs untreated 7.0), so any peak blunting is modest --
+    `treated_peak_intensity_reduction` (default 0.1) shaves the peak of aborted
+    attacks, e.g. from treating at onset. Set 0 to assume no peak effect.
   * Per-attack peak comes from PROSPECTIVE diaries (mean ~7), NOT the
     ceiling-loaded retrospective 9.7/72%-at-10 (Burish) -- that is a recalled
     "worst-ever" rating, not a per-attack measurement.
-  * PREVENTIVES act on a separate channel from abortives: they cut attack
+  * PREVENTIVES act on a separate channel from abortives: they mainly cut attack
     FREQUENCY (annual attack count), via shorter bouts (episodic) or lower daily
-    frequency (chronic), NOT per-attack duration or peak. Modelled as a
-    responder rate + a fractional frequency cut among responders.
+    frequency (chronic). Among responders they may also modestly blunt the PEAK
+    of the attacks that remain (`preventive_peak_intensity_reduction`, default
+    0.1), but never per-attack DURATION. Modelled as a responder rate + a
+    fractional frequency cut (and optional peak cut) among responders.
 """
 
 from __future__ import annotations
@@ -74,20 +78,23 @@ class Config:
     aborted_duration_mean_min: float = 15.0       # time-to-relief (suma ~7-10, O2 by 15)
     aborted_duration_sd_min: float = 6.0
     aborted_duration_floor_min: float = 3.0
-    treated_peak_intensity_reduction: float = 0.0 # fraction in [0,1]; default 0 (see docstring)
+    treated_peak_intensity_reduction: float = 0.1 # peak-pain cut on aborted attacks (fraction in [0,1])
 
-    # ---- Preventive treatment: reduces attack FREQUENCY ------------------- #
+    # ---- Preventive treatment: reduces attack FREQUENCY (+ optional peak) -- #
     # A preventive (verapamil first-line; corticosteroids transitional; lithium,
     # topiramate, melatonin, galcanezumab) lowers HOW MANY attacks a patient has
     # -- via shorter bouts (episodic) or lower daily frequency (chronic). Modelled
     # as a fractional cut to the patient's ANNUAL attack count, independent of
-    # abortive access. Acts on frequency only (NOT per-attack duration or peak).
+    # abortive access. Among responders it may ALSO modestly blunt the PEAK of the
+    # attacks that remain (preventive_peak_intensity_reduction); it never changes
+    # per-attack DURATION.
     preventive_access_fraction: float = 0.23      # bottom-up HIC/MIC/LIC (see sources)
     preventive_responder_mean: float = 0.42       # P(responds | on preventive); Rusanen 2022
     preventive_responder_reduction_mean: float = 0.55  # freq cut among responders
     preventive_responder_reduction_sd: float = 0.20
     preventive_reduction_floor: float = 0.50      # responder == >=50% reduction (trial convention)
     preventive_reduction_cap: float = 0.95
+    preventive_peak_intensity_reduction: float = 0.1  # peak-pain cut on responders' remaining attacks
 
     # ---- Per-attack PEAK INTENSITY: two-level model (NRS 1..10) ----------- #
     intensity_mean: float = 7.0                   # population mean peak (Snoer ~7.0)
@@ -397,9 +404,16 @@ def simulate(cfg: Config | None = None, **overrides) -> SimulationResult:
         cfg.aborted_duration_floor_min, None)
     duration = np.where(aborted, np.minimum(duration, abort_dur), duration)
 
+    # ---- treatment: peak-intensity reduction ----------------------------- #
+    # Applied AFTER duration so it doesn't feed the intensity->duration coupling.
+    # Preventive blunts the peak of a responder's remaining attacks; an abortive
+    # blunts the attacks it aborts; on an aborted attack of a responder both stack.
+    if cfg.preventive_peak_intensity_reduction > 0:
+        redp = np.clip(np.round(intensity * (1 - cfg.preventive_peak_intensity_reduction)), 1, 10)
+        intensity = np.where(prev_responder[patient_idx], redp, intensity).astype(int)
     if cfg.treated_peak_intensity_reduction > 0:
-        red = np.round(intensity * (1 - cfg.treated_peak_intensity_reduction))
-        intensity = np.where(aborted, np.clip(red, 1, 10), intensity).astype(int)
+        red = np.clip(np.round(intensity * (1 - cfg.treated_peak_intensity_reduction)), 1, 10)
+        intensity = np.where(aborted, red, intensity).astype(int)
 
     n_glob = cfg.annual_prevalence_per_100k / 1e5 * cfg.adult_population
     return SimulationResult(
@@ -439,8 +453,10 @@ def _counterfactual(cfg: Config, want_tuples: bool = False) -> dict:
     """Core counterfactual: per-(currently-untreated)-patient baseline burden and
     the burden AVERTED by gaining access, under three interventions (abortive /
     preventive / both). Captures the real shape of the benefit -- abortives
-    truncate DURATION (same attack count), preventives remove whole ATTACKS,
-    neither changes the PEAK.
+    truncate DURATION (same attack count), preventives remove whole ATTACKS, and
+    each optionally blunts the PEAK of the attacks it acts on. Severity time
+    (DLES = person-days at >=9) is scored with the SAME within-attack profile as
+    the burden view (time_at_levels), not the whole duration of peak->=9 attacks.
 
     Returns numpy arrays (length n_patients): is_episodic, random_id, base_attacks,
     base_min, base_severe, base_dles, and `{channel}_{attacks,min,severe,dles}_averted`.
@@ -478,6 +494,20 @@ def _counterfactual(cfg: Config, want_tuples: bool = False) -> dict:
         return ";".join(f"({int(round(float(x)))},{float(y):.2f})"
                         for x, y in zip(d, it))
 
+    # minutes an attack actually spends at intensity >=9, via the SAME within-attack
+    # profile as SimulationResult.time_at_levels (plateau at the peak + the ramp's
+    # share of levels 9..peak) -- so CE "DLES" matches the burden "DLES" definition.
+    nominal = cfg.profile_rise_min + cfg.profile_decline_min
+
+    def min_at_ge9(peak, D):
+        ramp = np.minimum(nominal, D)
+        plateau = D - ramp
+        nlev = (peak >= 9).astype(float) + (peak >= 10).astype(float)  # 1 at peak 9, 2 at 10
+        return np.where(peak >= 9, plateau + ramp / np.maximum(peak, 1) * nlev, 0.0)
+
+    def pcut(peak, frac):   # fractional cut to the 1..10 peak (no-op when frac<=0)
+        return np.clip(np.round(peak * (1 - frac)), 1, 10) if frac > 0 else peak
+
     for i in range(n):
         a, b = int(offs[i]), int(offs[i + 1])
         d = dur[a:b].astype(float)
@@ -485,7 +515,7 @@ def _counterfactual(cfg: Config, want_tuples: bool = False) -> dict:
         nb = len(d)
         base_min = float(d.sum())
         sev_base = int((it >= 9).sum())
-        dles_base = float(d[it >= 9].sum()) / 1440.0
+        dles_base = float(min_at_ge9(it, d).sum()) / 1440.0
         out["base_min"][i] = base_min
         out["base_severe"][i] = sev_base
         out["base_dles"][i] = dles_base
@@ -505,14 +535,20 @@ def _counterfactual(cfg: Config, want_tuples: bool = False) -> dict:
             if n_rm > 0:
                 keep[rp.choice(nb, size=min(n_rm, nb), replace=False)] = False
 
-        scen = {"abortive": (d_trunc, it),
-                "preventive": (d[keep], it[keep]),
-                "both": (d_trunc[keep], it[keep])}
+        # peak-intensity blunting: preventive on a responder's remaining attacks,
+        # abortive on the attacks it aborts; on the "both" channel they stack.
+        it_pv = pcut(it, cfg.preventive_peak_intensity_reduction) if reduction[i] > 0 else it
+        it_ab = np.where(aborted, pcut(it, cfg.treated_peak_intensity_reduction), it)
+        it_bo = np.where(aborted, pcut(it_pv, cfg.treated_peak_intensity_reduction), it_pv)
+
+        scen = {"abortive": (d_trunc, it_ab),
+                "preventive": (d[keep], it_pv[keep]),
+                "both": (d_trunc[keep], it_bo[keep])}
         for c, (du, iu) in scen.items():
             out[f"{c}_attacks_averted"][i] = nb - len(du)
             out[f"{c}_min_averted"][i] = base_min - float(du.sum())
             out[f"{c}_severe_averted"][i] = sev_base - int((iu >= 9).sum())
-            out[f"{c}_dles_averted"][i] = dles_base - float(du[iu >= 9].sum()) / 1440.0
+            out[f"{c}_dles_averted"][i] = dles_base - float(min_at_ge9(iu, du).sum()) / 1440.0
         if want_tuples:
             tuples["base"][i] = tup(d, it)
             for c, (du, iu) in scen.items():

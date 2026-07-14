@@ -39,6 +39,7 @@ SLIDERS = {
     "preventive_responder_mean":  [0.0, 0.95, 0.01],
     "preventive_responder_reduction_mean": [0.5, 0.95, 0.01],
     "preventive_responder_reduction_sd":   [0.0, 0.4, 0.01],
+    "preventive_peak_intensity_reduction": [0.0, 0.8, 0.01],
     "intensity_mean":             [3.0, 9.0, 0.1],
     "intensity_between_sd":       [0.0, 3.0, 0.1],
     "intensity_within_sd":        [0.0, 3.0, 0.1],
@@ -65,10 +66,11 @@ PLAUSIBLE = {
     "abort_prob_mean":            (0.50, 0.78),   # responder: O2 65 / triptan 64 / SC suma 78
     "treat_fraction":             (0.70, 0.95),   # Snoer ~85%
     "aborted_duration_mean_min":  (7.0, 20.0),    # time-to-relief: suma ~7 .. O2 ~15-20
-    "treated_peak_intensity_reduction": (0.0, 0.20),  # default 0; small upside uncertainty
+    "treated_peak_intensity_reduction": (0.0, 0.20),  # default 0.1; peak mostly precedes abortive
     "preventive_access_fraction": (0.15, 0.55),   # cheap generics .. bounded by dx delay/LMIC gaps
     "preventive_responder_mean":  (0.35, 0.52),   # Rusanen: all-conventional 0.36 .. verap+steroid 0.52
     "preventive_responder_reduction_mean": (0.50, 0.70),  # responder >=50%; mean somewhat above
+    "preventive_peak_intensity_reduction": (0.0, 0.25),  # default 0.1; weakly-quantified severity effect
     "intensity_mean":             (6.3, 7.5),     # Russell-rescaled ~6.9 .. Snoer 7.0(+)
     "intensity_between_sd":       (1.0, 2.2),     # assumption; Snoer "low within" => between sizable
     "intensity_within_sd":        (0.5, 1.6),     # assumption; Snoer low within-patient variability
