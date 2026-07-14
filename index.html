@@ -61,6 +61,11 @@
   .card .k { color:var(--mut); font-size:11px; margin-top:2px; }
   .charts { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
   @media (max-width:760px) { .charts { grid-template-columns:1fr; } }
+  /* sensitivity control bars: label+dropdown units in a row, stacked on mobile */
+  .sens-bar { display:flex; gap:8px; align-items:center; padding:6px 8px; flex-wrap:wrap; }
+  .sens-bar .sgrp { display:flex; gap:6px; align-items:center; }
+  .sens-bar .status { margin-left:0; }   /* rely on the bar's gap; stays left-aligned when stacked */
+  @media (max-width:760px) { .sens-bar { flex-direction:column; align-items:flex-start; } }
   .chart { background:var(--panel); border:1px solid var(--line);
            border-radius:8px; padding:6px; min-height:300px; min-width:0; }
   .full { grid-column:1 / -1; }
@@ -104,14 +109,14 @@
 
     <h2 class="sec-h">Sensitivity of burden calculations</h2>
     <div class="chart full" style="min-height:0">
-      <div style="display:flex;gap:8px;align-items:center;padding:6px 8px;flex-wrap:wrap">
-        <strong style="font-size:12px">Metric:</strong>
+      <div class="sens-bar">
+        <span class="sgrp"><strong style="font-size:12px">Metric:</strong>
         <select id="sensMetric">
           <option value="global_person_years_at_ge9">Person-years at ≥9/10</option>
           <option value="global_person_days_at_ge9" selected>Person-days at ≥9/10 (DLES)</option>
           <option value="global_person_years_in_attack">Person-years at any pain level</option>
           <option value="global_person_days_in_attack">Person-days at any pain level</option>
-        </select>
+        </select></span>
         <button id="sensBtn">Run sensitivity ▶</button>
         <span id="sensStatus" class="status"></span>
         <span style="font-size:11px;color:var(--mut)">Each lever swept across its literature-plausible range (not slider width), others held at current values</span>
@@ -173,19 +178,19 @@
     <h2 class="sec-h">Sensitivity of cost-effectiveness
       <span class="info" data-tip="Tornado for a $/X-averted metric of the selected project. Each model lever is swept across its literature-plausible range; for ClusterFree the effect-size median is also swept (0.4–0.8), for ClusterInfo the five funnel-factor medians are swept across their own p10–p90. Budget and the reach inputs (patients-helped / visitors) are held fixed at that project's values above. Prevalence and the two access levers drop out entirely: cost-effectiveness depends on the per-patient benefit and how many we help, not on the size of the sufferer pool or on current access levels.">ⓘ</span></h2>
     <div class="chart full" style="min-height:0">
-      <div style="display:flex;gap:8px;align-items:center;padding:6px 8px;flex-wrap:wrap">
-        <strong style="font-size:12px">Project:</strong>
+      <div class="sens-bar">
+        <span class="sgrp"><strong style="font-size:12px">Project:</strong>
         <select id="sensCESource">
           <option value="clusterfree" selected>ClusterFree</option>
           <option value="clusterinfo">ClusterInfo only</option>
-        </select>
-        <strong style="font-size:12px">Metric:</strong>
+        </select></span>
+        <span class="sgrp"><strong style="font-size:12px">Metric:</strong>
         <select id="sensCEMetric">
           <option value="cost_per_dles" selected>$ / DLES averted</option>
           <option value="cost_per_attack">$ / attack averted</option>
           <option value="cost_per_severe_attack">$ / severe (≥9/10) attack averted</option>
           <option value="cost_per_attack_hour">$ / attack-hour averted</option>
-        </select>
+        </select></span>
         <button id="sensCEBtn">Run sensitivity ▶</button>
         <span id="sensCEStatus" class="status"></span>
         <span style="font-size:11px;color:var(--mut)">Each lever swept across its plausible range; budget &amp; reach held at the selected project's values above.</span>
@@ -649,8 +654,8 @@ function drawTornadoInto(cid, r, opts){
      name:"current base value",showlegend:true,hoverinfo:"skip"}];
   const narrow = window.innerWidth <= 760;
   const layout = {...dark, showlegend:true,
-     title:opts.title,
-     xaxis:{title:opts.xtitle||"metric value across lever's range"},
+     title:{text:opts.title, y:0.98, yanchor:"top"},   // pin to the very top so it
+     xaxis:{title:opts.xtitle||"metric value across lever's range"},   // doesn't sink toward the legend
      shapes:[{type:"line", x0:r.base, x1:r.base, yref:"paper", y0:0, y1:1,
               line:{color:"#9aa3b2", width:1, dash:"dot"}}]};
   if(narrow){
@@ -658,16 +663,23 @@ function drawTornadoInto(cid, r, opts){
     // drop the margin, hide the axis labels, and put each lever name on its OWN
     // line above its (thinner) bar — bars then use the full width. The legend
     // moves below the plot so it can't cover the top bars.
-    layout.margin={t:34, r:14, b:110, l:12};
+    layout.margin={t:34, r:14, b:150, l:12};
     layout.yaxis={showticklabels:false};
-    layout.height=Math.max(360, names.length*40+160);
-    layout.legend={orientation:"h", x:0, xanchor:"left", y:-0.06, yanchor:"top", font:{size:10}};
+    layout.height=Math.max(360, names.length*40+190);
+    // stack the legend vertically and centre it BELOW the x-axis title, so the two
+    // no longer collide (a horizontal legend crossed the centred x title).
+    layout.legend={orientation:"v", x:0.5, xanchor:"center", y:-0.07, yanchor:"top",
+                   font:{size:10}};
     layout.annotations=names.map(nm=>({
       xref:"paper", x:0, xanchor:"left", y:nm, yref:"y", yanchor:"bottom", yshift:13,
       text:nm, showarrow:false, align:"left", font:{size:10, color:"#e6e8ec"}}));
   } else {
-    layout.margin={t:48, r:20, b:40, l:210};
-    layout.legend={orientation:"h", x:0, y:1.05, font:{size:10}};
+    layout.margin={t:44, r:20, b:40, l:210};
+    // stack the legend vertically in the bottom-right, where the smallest bars sit
+    // and there's empty space -- keeps it clear of the title and the top bars.
+    layout.legend={orientation:"v", x:0.99, xanchor:"right", y:0.02, yanchor:"bottom",
+                   font:{size:10}, bgcolor:"rgba(15,17,21,0.72)",
+                   bordercolor:"#2a2f3a", borderwidth:1};
     layout.height=Math.max(420, names.length*26+100);
   }
   Plotly.react(cid,[{
