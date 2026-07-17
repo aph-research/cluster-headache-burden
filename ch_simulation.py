@@ -486,7 +486,9 @@ def _counterfactual(cfg: Config, want_tuples: bool = False) -> dict:
         "base_min": np.zeros(n), "base_severe": np.zeros(n), "base_dles": np.zeros(n),
     }
     for c in CF_CHANNELS:
-        for m in ("attacks_averted", "min_averted", "severe_averted", "dles_averted"):
+        for m in ("attacks_averted", "attacks_prevented", "attacks_aborted",
+                  "min_averted", "severe_averted", "severe_prevented",
+                  "severe_aborted", "dles_averted"):
             out[f"{c}_{m}"] = np.zeros(n)
     tuples = {k: [None] * n for k in ("base", *CF_CHANNELS)} if want_tuples else None
 
@@ -541,17 +543,40 @@ def _counterfactual(cfg: Config, want_tuples: bool = False) -> dict:
         it_ab = np.where(aborted, pcut(it, cfg.treated_peak_intensity_reduction), it)
         it_bo = np.where(aborted, pcut(it_pv, cfg.treated_peak_intensity_reduction), it_pv)
 
-        scen = {"abortive": (d_trunc, it_ab),
-                "preventive": (d[keep], it_pv[keep]),
-                "both": (d_trunc[keep], it_bo[keep])}
-        for c, (du, iu) in scen.items():
-            out[f"{c}_attacks_averted"][i] = nb - len(du)
+        # "averted" = attacks the patient no longer suffers in full: whole attacks
+        # PREVENTED (removed by a preventive) + attacks ABORTED (cut short by acute
+        # treatment). An aborted-and-prevented attack counts once, as prevented.
+        prevented = int(nb - int(keep.sum()))
+        sev_mask = it >= 9                       # attacks that peaked at >=9 in the baseline
+        all_keep = np.ones(nb, dtype=bool)
+        # Severe breakdown is attributed BY CHANNEL, mirroring total attacks:
+        #   severe "prevented" = the PREVENTIVE's whole severe reduction -- a baseline
+        #     >=9 attack it removes, OR keeps but blunts below 9.
+        #   severe "aborted"   = the ABORTIVE's incremental reduction -- a >=9 attack the
+        #     preventive would have left at >=9 but acute treatment blunts below 9.
+        # (Truncation alone never un-severes an attack; the peak still hits >=9, so that
+        # benefit shows up in DLES.) ipv = peak with ONLY the preventive applied (the raw
+        # baseline on the abortive channel, where no preventive acts); ifin = final peak.
+        scen = {  # (kept-dur, kept-int, prevented, aborted, keep-mask, preventive-peak, final-peak)
+            "abortive":   (d_trunc,       it_ab,       0,         int(aborted.sum()),          all_keep, it,    it_ab),
+            "preventive": (d[keep],       it_pv[keep], prevented, 0,                           keep,     it_pv, it_pv),
+            "both":       (d_trunc[keep], it_bo[keep], prevented, int((aborted & keep).sum()), keep,     it_pv, it_bo),
+        }
+        for c, (du, iu, prev_ct, abort_ct, kmask, ipv, ifin) in scen.items():
+            sev_prev = int((sev_mask & ~kmask).sum()
+                           + (sev_mask & kmask & (ipv < 9)).sum())
+            sev_abort = int((sev_mask & kmask & (ipv >= 9) & (ifin < 9)).sum())
+            out[f"{c}_attacks_prevented"][i] = prev_ct
+            out[f"{c}_attacks_aborted"][i] = abort_ct
+            out[f"{c}_attacks_averted"][i] = prev_ct + abort_ct
             out[f"{c}_min_averted"][i] = base_min - float(du.sum())
-            out[f"{c}_severe_averted"][i] = sev_base - int((iu >= 9).sum())
+            out[f"{c}_severe_prevented"][i] = sev_prev
+            out[f"{c}_severe_aborted"][i] = sev_abort
+            out[f"{c}_severe_averted"][i] = sev_prev + sev_abort   # == sev_base - (iu>=9).sum()
             out[f"{c}_dles_averted"][i] = dles_base - float(min_at_ge9(iu, du).sum()) / 1440.0
         if want_tuples:
             tuples["base"][i] = tup(d, it)
-            for c, (du, iu) in scen.items():
+            for c, (du, iu, *_rest) in scen.items():
                 tuples[c][i] = tup(du, iu)
     if want_tuples:
         out["_tuples"] = tuples
@@ -575,11 +600,17 @@ def counterfactual_csv(cfg: Config | None = None, **overrides) -> str:
         "id", "type", "random_id", "total_attacks", "total_duration",
         "severe_attacks_baseline", "dles_baseline", "attacks",
         "attacks_with_access_abortive", "attacks_averted_abortive",
-        "time_averted_abortive_min", "severe_averted_abortive", "dles_averted_abortive",
+        "attacks_prevented_abortive", "attacks_aborted_abortive",
+        "time_averted_abortive_min", "severe_averted_abortive",
+        "severe_prevented_abortive", "severe_aborted_abortive", "dles_averted_abortive",
         "attacks_with_access_preventive", "attacks_averted_preventive",
-        "time_averted_preventive_min", "severe_averted_preventive", "dles_averted_preventive",
+        "attacks_prevented_preventive", "attacks_aborted_preventive",
+        "time_averted_preventive_min", "severe_averted_preventive",
+        "severe_prevented_preventive", "severe_aborted_preventive", "dles_averted_preventive",
         "attacks_with_access_both", "attacks_averted_both",
-        "time_averted_both_min", "severe_averted_both", "dles_averted_both",
+        "attacks_prevented_both", "attacks_aborted_both",
+        "time_averted_both_min", "severe_averted_both",
+        "severe_prevented_both", "severe_aborted_both", "dles_averted_both",
     ])
     for i in range(cfg.n_patients):
         row = [i, "episodic" if d["is_episodic"][i] else "chronic",
@@ -588,8 +619,12 @@ def counterfactual_csv(cfg: Config | None = None, **overrides) -> str:
                round(d["base_dles"][i], 5), t["base"][i]]
         for c in CF_CHANNELS:
             row += [t[c][i], int(d[f"{c}_attacks_averted"][i]),
+                    int(d[f"{c}_attacks_prevented"][i]),
+                    int(d[f"{c}_attacks_aborted"][i]),
                     int(round(d[f"{c}_min_averted"][i])),
                     int(d[f"{c}_severe_averted"][i]),
+                    int(d[f"{c}_severe_prevented"][i]),
+                    int(d[f"{c}_severe_aborted"][i]),
                     round(d[f"{c}_dles_averted"][i], 5)]
         w.writerow(row)
     return buf.getvalue()
@@ -637,7 +672,11 @@ def cost_effectiveness(cfg: Config | None = None, *, annual_budget: float = 100_
 
     f = effect_size_mean * patients_reached
     attacks = per_patient("attacks_averted") * f
+    prevented = per_patient("attacks_prevented") * f
+    aborted = per_patient("attacks_aborted") * f
     severe = per_patient("severe_averted") * f
+    severe_prevented = per_patient("severe_prevented") * f
+    severe_aborted = per_patient("severe_aborted") * f
     hours = per_patient("min_averted") * f / 60.0
     dles = per_patient("dles_averted") * f
 
@@ -650,7 +689,10 @@ def cost_effectiveness(cfg: Config | None = None, *, annual_budget: float = 100_
                              if patients_reached else None),
         "channel": channel, "effect_size_mean": effect_size_mean,
         "beneficiary_episodic_share": beneficiary_episodic_share,
-        "attacks_averted": attacks, "severe_attacks_averted": severe,
+        "attacks_averted": attacks, "attacks_prevented": prevented,
+        "attacks_aborted": aborted, "severe_attacks_averted": severe,
+        "severe_attacks_prevented": severe_prevented,
+        "severe_attacks_aborted": severe_aborted,
         "attack_hours_averted": hours, "dles_averted": dles,
         "cost_per_attack": ratio(attacks),
         "cost_per_severe_attack": ratio(severe),
@@ -699,7 +741,9 @@ def _compute_per_patient_benefit(cfg, channel, beneficiary_episodic_share):
         return s * me + (1.0 - s) * mc
 
     return {m: pp(m) for m in
-            ("attacks_averted", "severe_averted", "min_averted", "dles_averted")}
+            ("attacks_averted", "attacks_prevented", "attacks_aborted",
+             "severe_averted", "severe_prevented", "severe_aborted",
+             "min_averted", "dles_averted")}
 
 
 def _trunc_normal(rng, mean, sd, n, lo=0.0, hi=1.0):
@@ -719,10 +763,15 @@ def _metric_bands(pp, f, annual_budget):
     pessimistic (expensive) and p90 optimistic (cheap)."""
     metrics = {
         "attacks_averted": pp["attacks_averted"] * f,
+        "attacks_prevented": pp["attacks_prevented"] * f,
+        "attacks_aborted": pp["attacks_aborted"] * f,
         "severe_attacks_averted": pp["severe_averted"] * f,
+        "severe_attacks_prevented": pp["severe_prevented"] * f,
+        "severe_attacks_aborted": pp["severe_aborted"] * f,
         "attack_hours_averted": pp["min_averted"] * f / 60.0,
         "dles_averted": pp["dles_averted"] * f,
     }
+    # prevented/aborted are the breakdown of attacks_averted -> no cost metric of their own
     ckey = {"attacks_averted": "cost_per_attack",
             "severe_attacks_averted": "cost_per_severe_attack",
             "attack_hours_averted": "cost_per_attack_hour",
@@ -730,6 +779,8 @@ def _metric_bands(pp, f, annual_budget):
     out = {}
     for k, arr in metrics.items():
         out[k] = _bands(arr)
+        if k not in ckey:
+            continue
         c = np.where(arr > 0, annual_budget / np.where(arr > 0, arr, 1.0), np.nan)
         # higher averted -> lower cost, so the 90th pct of cost is the pessimistic p10
         p90c, p50c, p10c = np.nanpercentile(c, [10, 50, 90])

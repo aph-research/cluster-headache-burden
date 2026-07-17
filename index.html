@@ -483,10 +483,18 @@ function setBell(bellId, meanId, sdId){
 }
 // shared renderer: first 4 rows (all attacks) -> genId, last 4 (severe) -> sevId.
 function renderCEcards(genId, sevId, r, isBand){
+  const g=v=> isBand ? v.p50 : v;   // p50 of a band, or the raw point value
   const one=([label,key,kind])=>{
     const main = isBand ? (kind==="$"?money(r[key].p50):fmtN(r[key].p50))
                         : (kind==="$"?money(r[key]):fmtN(r[key]));
-    const sub  = isBand ? `<div class="k" style="opacity:.65;font-size:10px">p10–p90: ${kind==="$"?moneyBand(r[key]):band(r[key])}</div>` : "";
+    let sub  = isBand ? `<div class="k" style="opacity:.65;font-size:10px">p10–p90: ${kind==="$"?moneyBand(r[key]):band(r[key])}</div>` : "";
+    // "attacks averted" = attacks prevented (removed) + aborted (cut short); show the split
+    if(key==="attacks_averted")
+      sub += `<div class="k" style="opacity:.65;font-size:10px">${fmtN(g(r.attacks_prevented))} prevented + ${fmtN(g(r.attacks_aborted))} aborted</div>`;
+    // "severe averted" attributed by channel: prevented = preventive's severe reduction
+    // (removed OR blunted <9); aborted = abortive's incremental blunting below 9/10.
+    if(key==="severe_attacks_averted")
+      sub += `<div class="k" style="opacity:.65;font-size:10px">${fmtN(g(r.severe_attacks_prevented))} prevented + ${fmtN(g(r.severe_attacks_aborted))} aborted</div>`;
     return `<div class="card"><div class="v">${main}</div>${sub}<div class="k">${label}</div></div>`;
   };
   $("#"+genId).innerHTML=CE_ROWS.slice(0,4).map(one).join("");
