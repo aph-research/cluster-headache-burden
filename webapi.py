@@ -280,8 +280,8 @@ def dispatch(endpoint, params=None):
             }
             return sensitivity_ce_funnel_payload(
                 over, metric, n_sens,
-                annual_budget=float(params.get("annual_budget", 50000)),
-                annual_unique_visitors=float(params.get("annual_unique_visitors", 10000)),
+                annual_budget=float(params.get("annual_budget", 100000)),
+                annual_unique_visitors=float(params.get("annual_unique_visitors", 20000)),
                 factors=factors, channel="both")
         return sensitivity_ce_payload(
             over, metric, n_sens,
@@ -315,7 +315,7 @@ def dispatch(endpoint, params=None):
 
         kw = dict(
             annual_budget=float(params.get("annual_budget", 100000)),
-            annual_unique_visitors=float(params.get("annual_unique_visitors", 10000)),
+            annual_unique_visitors=float(params.get("annual_unique_visitors", 20000)),
             patient_fraction=gauss("patient_fraction", 0.75, 0.10),
             engaged_fraction=gauss("engaged_fraction", 0.30, 0.10),
             adoption_fraction=gauss("adoption_fraction", 0.25, 0.10),
